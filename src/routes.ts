@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { visitorRoutes } from './modules/visitors/visitor.routes';
+import { memberRoutes } from './modules/users/members/members.routes';
 
 const routes = Router();
 
@@ -14,5 +15,6 @@ routes.get('/health', (_req, res) => {
 
 // Módulos da aplicação
 routes.use('/visitors', visitorRoutes);
+routes.use('/members', memberRoutes);
 
 export { routes };

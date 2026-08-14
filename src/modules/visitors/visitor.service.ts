@@ -3,6 +3,7 @@ import { MaritalStatus, Prisma } from '@prisma/client';
 
 export interface CreateVisitorDTO {
   fullName: string;
+  email?: string;
   phone?: string;
   maritalStatus?: MaritalStatus;
   birthDate?: string | Date;
@@ -18,12 +19,40 @@ export interface CreateVisitorDTO {
 export interface UpdateVisitorDTO extends Partial<CreateVisitorDTO> {}
 
 export class VisitorService {
+  private async checkEmailAvailability(email?: string, currentVisitorId?: string) {
+    if (!email || !email.trim()) return;
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Verificar se já existe um Usuário/Membro com este e-mail
+    const existingUser = await prisma.user.findUnique({
+      where: { email: cleanEmail },
+    });
+    if (existingUser) {
+      throw new Error('Este e-mail já pertence a um Membro/Usuário cadastrado no sistema.');
+    }
+
+    // 2. Verificar se já existe outro Visitante com este e-mail
+    const existingVisitor = await prisma.visitor.findFirst({
+      where: {
+        email: cleanEmail,
+        ...(currentVisitorId ? { id: { not: currentVisitorId } } : {}),
+      },
+    });
+    if (existingVisitor) {
+      throw new Error('Este e-mail já está cadastrado para outro visitante.');
+    }
+  }
+
   async create(data: CreateVisitorDTO) {
-    const { birthDate, visitDate, ...rest } = data;
+    const { birthDate, visitDate, email, ...rest } = data;
+    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
+
+    await this.checkEmailAvailability(cleanEmail || undefined);
 
     return prisma.visitor.create({
       data: {
         ...rest,
+        email: cleanEmail,
         birthDate: birthDate ? new Date(birthDate) : undefined,
         visitDate: visitDate ? new Date(visitDate) : undefined,
       },
@@ -36,11 +65,15 @@ export class VisitorService {
   }
 
   async findAll(params?: { search?: string; neighborhood?: string; wantsToJoinGC?: boolean }) {
-    const where: Prisma.VisitorWhereInput = {};
+    // Não listar visitantes que já foram convertidos em Membros
+    const where: Prisma.VisitorWhereInput = {
+      status: { not: 'MEMBRO' },
+    };
 
     if (params?.search) {
       where.OR = [
         { fullName: { contains: params.search, mode: 'insensitive' } },
+        { email: { contains: params.search, mode: 'insensitive' } },
         { phone: { contains: params.search, mode: 'insensitive' } },
         { neighborhood: { contains: params.search, mode: 'insensitive' } },
       ];
@@ -77,12 +110,18 @@ export class VisitorService {
   }
 
   async update(id: string, data: UpdateVisitorDTO) {
-    const { birthDate, visitDate, ...rest } = data;
+    const { birthDate, visitDate, email, ...rest } = data;
+    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : (email === '' ? null : undefined);
+
+    if (cleanEmail) {
+      await this.checkEmailAvailability(cleanEmail, id);
+    }
 
     return prisma.visitor.update({
       where: { id },
       data: {
         ...rest,
+        ...(cleanEmail !== undefined ? { email: cleanEmail } : {}),
         birthDate: birthDate ? new Date(birthDate) : undefined,
         visitDate: visitDate ? new Date(visitDate) : undefined,
       },

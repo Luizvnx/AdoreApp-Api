@@ -18,9 +18,9 @@ export class VisitorController {
 
       const visitor = await visitorService.create(req.body);
       res.status(201).json(visitor);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[VisitorController.create] Error:', error);
-      res.status(500).json({ error: 'Falha ao cadastrar visitante.' });
+      res.status(400).json({ error: error.message || 'Falha ao cadastrar visitante.' });
     }
   }
 
@@ -72,9 +72,9 @@ export class VisitorController {
 
       const updatedVisitor = await visitorService.update(id, req.body);
       res.status(200).json(updatedVisitor);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[VisitorController.update] Error:', error);
-      res.status(500).json({ error: 'Falha ao atualizar visitante.' });
+      res.status(400).json({ error: error.message || 'Falha ao atualizar visitante.' });
     }
   }
 
