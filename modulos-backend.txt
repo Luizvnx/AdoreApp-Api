@@ -1,0 +1,16 @@
+api-igreja/
+├── prisma/
+│   └── schema.prisma         # Onde você colará aquele schema que geramos
+├── src/
+│   ├── lib/
+│   │   └── prisma.ts         # Conexão única com o banco de dados
+│   ├── modules/
+│   │   └── visitors/
+│   │       ├── visitor.controller.ts
+│   │       ├── visitor.service.ts
+│   │       └── visitor.routes.ts
+│   ├── routes.ts             # Arquivo central de rotas
+│   └── server.ts             # Ponto de entrada da aplicação
+├── .env
+├── package.json
+└── tsconfig.json

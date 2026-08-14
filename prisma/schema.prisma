@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Mapeamento dinâmico de funções
+enum Role {
+  SUPER_ADMIN      // Pastores e Diretoria Executiva
+  ADMIN_WELCOME    // Liderança do Acolhimento / Integração
+  GC_SUPERVISOR    // Supervisor de Grupos de Conexão
+  GC_LEADER        // Líder de GC
+  WORSHIP_LEADER   // Líder de Louvor
+  MEMBER           // Membro Comum (acesso restrito)
+}
+
+enum MaritalStatus {
+  SOLTEIRO
+  CASADO
+  DIVORCIADO
+  VIUVO
+}
+
+// Usuários do APP (Líderes, Pastores, Membros Ativos)
+model User {
+  id        String   @id @default(uuid())
+  fullName  String
+  email     String   @unique
+  password  String
+  roles     Role[]   // Array permitindo acumular múltiplos cargos
+  isActive  Boolean  @default(true)
+  
+  // Relacionamentos: O que esse usuário fez/gerencia?
+  visitorsRegistered  Visitor[]
+  gcsLed              ConnectionGroup[] @relation("GCLeader")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Cadastro de Visitantes
+model Visitor {
+  id              String         @id @default(uuid())
+  fullName        String
+  phone           String?
+  maritalStatus   MaritalStatus?
+  birthDate       DateTime?      // Melhor que salvar a idade fixa
+  isBaptized      Boolean        @default(false)
+  neighborhood    String?
+  fullAddress     String?
+  wantsToJoinGC   Boolean        @default(false)
+  howDidYouArrive String?        // Ex: "Convite de Amigo", "Redes Sociais", etc
+  visitDate       DateTime       @default(now())
+  
+  // Quem fez o cadastro no aplicativo (Rastreabilidade)
+  registeredById  String?
+  registeredBy    User?          @relation(fields: [registeredById], references: [id])
+  
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+// Grupos de Conexão (GCs / Células)
+model ConnectionGroup {
+  id           String   @id @default(uuid())
+  name         String   // Ex: "GC Filhos do Rei"
+  neighborhood String?
+  meetingDay   String?  // Ex: "Terça-feira"
+  meetingTime  String?  // Ex: "19:30"
+  
+  // Líder responsável pelo GC
+  leaderId     String?
+  leader       User?    @relation("GCLeader", fields: [leaderId], references: [id])
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
