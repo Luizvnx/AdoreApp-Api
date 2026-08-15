@@ -45,6 +45,10 @@ model User {
   gcsLed              ConnectionGroup[] @relation("GCLeader")
   memberProfile       MemberProfile?
 
+  // ADICIONADO: Qual Grupo de Conexão este membro frequenta (como participante, não como líder)
+  connectionGroupId   String?
+  connectionGroup     ConnectionGroup? @relation("GCMembers", fields: [connectionGroupId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -65,12 +69,18 @@ model Visitor {
   visitDate       DateTime       @default(now())
   
   status          VisitorStatus  @default(PENDENTE)
-  userId          String?
+  
+  // ADICIONADO: @unique colocado aqui, pois uma ficha de visitante só pode gerar UM membro
+  userId          String?        @unique 
   user            User?          @relation("ConvertedVisitor", fields: [userId], references: [id])
   
   // Quem fez o cadastro no aplicativo (Rastreabilidade)
-  registeredById  String?
+  registeredById  String?        // CORREÇÃO: O @unique foi removido daqui para o líder poder cadastrar vários visitantes
   registeredBy    User?          @relation("RegisteredBy", fields: [registeredById], references: [id])
+  
+  // ADICIONADO: Para visitantes que já começaram a frequentar um GC antes de virar membro
+  connectionGroupId String?
+  connectionGroup   ConnectionGroup? @relation("GCVisitors", fields: [connectionGroupId], references: [id])
   
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -87,6 +97,10 @@ model ConnectionGroup {
   // Líder responsável pelo GC
   leaderId     String?
   leader       User?    @relation("GCLeader", fields: [leaderId], references: [id])
+
+  // ADICIONADO: Listas de quem frequenta este GC (Membros e Visitantes)
+  members      User[]   @relation("GCMembers")
+  visitors     Visitor[] @relation("GCVisitors")
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -106,6 +120,10 @@ model MemberProfile {
   joinDate        DateTime?
   baptismDate     DateTime?
   ministries      String[]
+  
+  // ADICIONADO: Campos comuns para estatísticas da membresia da igreja
+  maritalStatus   MaritalStatus?
+  gender          String?
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

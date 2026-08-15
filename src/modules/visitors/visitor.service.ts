@@ -14,13 +14,14 @@ export interface CreateVisitorDTO {
   howDidYouArrive?: string;
   visitDate?: string | Date;
   registeredById?: string;
+  connectionGroupId?: string;
 }
 
 export interface UpdateVisitorDTO extends Partial<CreateVisitorDTO> {}
 
 export class VisitorService {
-  private async checkEmailAvailability(email?: string, currentVisitorId?: string) {
-    if (!email || !email.trim()) return;
+  private async checkEmailAvailability(email?: string | null, currentVisitorId?: string) {
+    if (!email || typeof email !== 'string' || !email.trim()) return;
     const cleanEmail = email.trim().toLowerCase();
 
     // 1. Verificar se já existe um Usuário/Membro com este e-mail
@@ -44,15 +45,18 @@ export class VisitorService {
   }
 
   async create(data: CreateVisitorDTO) {
-    const { birthDate, visitDate, email, ...rest } = data;
-    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
+    const { birthDate, visitDate, email, connectionGroupId, ...rest } = data;
+    const cleanEmail = email && typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null;
 
-    await this.checkEmailAvailability(cleanEmail || undefined);
+    if (cleanEmail) {
+      await this.checkEmailAvailability(cleanEmail);
+    }
 
     return prisma.visitor.create({
       data: {
         ...rest,
         email: cleanEmail,
+        connectionGroupId: connectionGroupId || null,
         birthDate: birthDate ? new Date(birthDate) : undefined,
         visitDate: visitDate ? new Date(visitDate) : undefined,
       },
@@ -60,11 +64,14 @@ export class VisitorService {
         registeredBy: {
           select: { id: true, fullName: true, email: true },
         },
+        connectionGroup: {
+          select: { id: true, name: true },
+        },
       },
     });
   }
 
-  async findAll(params?: { search?: string; neighborhood?: string; wantsToJoinGC?: boolean }) {
+  async findAll(params?: { search?: string; neighborhood?: string; wantsToJoinGC?: boolean; connectionGroupId?: string }) {
     // Não listar visitantes que já foram convertidos em Membros
     const where: Prisma.VisitorWhereInput = {
       status: { not: 'MEMBRO' },
@@ -87,12 +94,19 @@ export class VisitorService {
       where.wantsToJoinGC = params.wantsToJoinGC;
     }
 
+    if (params?.connectionGroupId) {
+      where.connectionGroupId = params.connectionGroupId;
+    }
+
     return prisma.visitor.findMany({
       where,
       orderBy: { visitDate: 'desc' },
       include: {
         registeredBy: {
           select: { id: true, fullName: true, email: true },
+        },
+        connectionGroup: {
+          select: { id: true, name: true },
         },
       },
     });
@@ -105,13 +119,16 @@ export class VisitorService {
         registeredBy: {
           select: { id: true, fullName: true, email: true },
         },
+        connectionGroup: {
+          select: { id: true, name: true },
+        },
       },
     });
   }
 
   async update(id: string, data: UpdateVisitorDTO) {
-    const { birthDate, visitDate, email, ...rest } = data;
-    const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : (email === '' ? null : undefined);
+    const { birthDate, visitDate, email, connectionGroupId, ...rest } = data;
+    const cleanEmail = email && typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : (email === '' ? null : undefined);
 
     if (cleanEmail) {
       await this.checkEmailAvailability(cleanEmail, id);
@@ -122,12 +139,16 @@ export class VisitorService {
       data: {
         ...rest,
         ...(cleanEmail !== undefined ? { email: cleanEmail } : {}),
+        ...(connectionGroupId !== undefined ? { connectionGroupId: connectionGroupId || null } : {}),
         birthDate: birthDate ? new Date(birthDate) : undefined,
         visitDate: visitDate ? new Date(visitDate) : undefined,
       },
       include: {
         registeredBy: {
           select: { id: true, fullName: true, email: true },
+        },
+        connectionGroup: {
+          select: { id: true, name: true },
         },
       },
     });

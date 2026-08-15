@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { visitorRoutes } from './modules/visitors/visitor.routes';
 import { memberRoutes } from './modules/users/members/members.routes';
+import { authRoutes } from './modules/auth/auth.routes';
 
 const routes = Router();
 
@@ -14,6 +15,7 @@ routes.get('/health', (_req, res) => {
 });
 
 // Módulos da aplicação
+routes.use('/auth', authRoutes);
 routes.use('/visitors', visitorRoutes);
 routes.use('/members', memberRoutes);
 

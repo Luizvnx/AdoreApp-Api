@@ -27,10 +27,15 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 
-const server = app.listen(PORT, () => {
+import { AuthController } from './modules/auth/auth.controller';
+
+const server = app.listen(PORT, async () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🔗 Healthcheck disponível em: http://localhost:${PORT}/health`);
+  console.log(`🔗 API Autenticação em: http://localhost:${PORT}/api/auth/login`);
   console.log(`🔗 API Visitantes disponível em: http://localhost:${PORT}/api/visitors`);
+  
+  await AuthController.seedInitialUserIfNeeded();
 });
 
 

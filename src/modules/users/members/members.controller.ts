@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../../lib/prisma';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 export class MembersController {
   // Lista todos os membros com seus perfis e relacionamentos
@@ -13,7 +14,10 @@ export class MembersController {
           }
         },
         include: {
-          memberProfile: true
+          memberProfile: true,
+          connectionGroup: {
+            select: { id: true, name: true }
+          }
         }
       });
       res.json(members);
@@ -26,14 +30,22 @@ export class MembersController {
   // Atualiza as informações do membro
   async updateMember(req: Request, res: Response) {
     const id = req.params.id as string;
-    const { fullName, phone, address, zipCode, neighborhood, birthDate, joinDate, baptismDate, ministries } = req.body;
+    const { fullName, password, phone, address, zipCode, neighborhood, birthDate, joinDate, baptismDate, ministries, maritalStatus, gender, connectionGroupId } = req.body;
 
     try {
+      // Criptografa a nova senha se fornecida
+      let hashedPassword: string | undefined = undefined;
+      if (password && typeof password === 'string' && password.trim().length > 0) {
+        hashedPassword = await bcrypt.hash(password.trim(), 10);
+      }
+
       // 1. Atualizar o User
       const updatedUser = await prisma.user.update({
         where: { id },
         data: {
           fullName,
+          ...(hashedPassword ? { password: hashedPassword } : {}),
+          ...(connectionGroupId !== undefined ? { connectionGroupId: connectionGroupId || null } : {}),
           memberProfile: {
             upsert: {
               create: {
@@ -41,6 +53,8 @@ export class MembersController {
                 address,
                 zipCode,
                 neighborhood,
+                maritalStatus: maritalStatus || null,
+                gender: gender || null,
                 birthDate: birthDate ? new Date(birthDate) : null,
                 joinDate: joinDate ? new Date(joinDate) : null,
                 baptismDate: baptismDate ? new Date(baptismDate) : null,
@@ -51,6 +65,8 @@ export class MembersController {
                 address,
                 zipCode,
                 neighborhood,
+                maritalStatus: maritalStatus || null,
+                gender: gender || null,
                 birthDate: birthDate ? new Date(birthDate) : null,
                 joinDate: joinDate ? new Date(joinDate) : null,
                 baptismDate: baptismDate ? new Date(baptismDate) : null,
@@ -60,7 +76,10 @@ export class MembersController {
           }
         },
         include: {
-          memberProfile: true
+          memberProfile: true,
+          connectionGroup: {
+            select: { id: true, name: true }
+          }
         }
       });
 
@@ -92,33 +111,69 @@ export class MembersController {
       }
 
       // 2. Definir e-mail e senha temporária
-      const targetEmail = (visitor.email && visitor.email.trim()) 
-        ? visitor.email.trim().toLowerCase() 
-        : (visitor.phone ? `membro${visitor.phone.replace(/\D/g, '')}@igreja.com` : `membro${Date.now()}@igreja.com`);
-      
+      const requestedEmail = req.body?.email && typeof req.body.email === 'string' && req.body.email.trim();
+      const visitorEmail = visitor.email && visitor.email.trim();
+
+      let targetEmail: string;
+
+      if (requestedEmail) {
+        targetEmail = requestedEmail.toLowerCase();
+      } else if (visitorEmail) {
+        targetEmail = visitorEmail.toLowerCase();
+      } else {
+        // Se o visitante não possuía e-mail, gera um e-mail legível com o Primeiro Nome + Telefone (ex: joao.79988562587@aviva.com)
+        const firstName = visitor.fullName
+          .trim()
+          .split(' ')[0]
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]/g, '') || 'membro';
+
+        const phoneDigits = visitor.phone ? visitor.phone.replace(/\D/g, '') : '';
+        const baseIdentifier = phoneDigits || visitor.id.slice(0, 4);
+
+        targetEmail = `${firstName}.${baseIdentifier}@aviva.com`;
+
+        // Se por acaso este e-mail amigável já existir no banco, acrescenta um contador numérico legível (ex: joao.79988562587.2@aviva.com)
+        let counter = 2;
+        let candidateEmail = targetEmail;
+
+        while (await prisma.user.findUnique({ where: { email: candidateEmail } })) {
+          candidateEmail = `${firstName}.${baseIdentifier}.${counter}@aviva.com`;
+          counter++;
+        }
+
+        targetEmail = candidateEmail;
+      }
+
+      // Se o e-mail (real ou fornecido no body) já pertencer a outro usuário
       const existingUser = await prisma.user.findUnique({
         where: { email: targetEmail }
       });
 
-      if (existingUser) {
+      if (existingUser && (requestedEmail || visitorEmail)) {
         res.status(400).json({ error: `Já existe um usuário/membro cadastrado com o e-mail (${targetEmail}).` });
         return;
       }
 
-      const tempPassword = crypto.randomBytes(4).toString('hex'); // 8 chars
+      const tempPassword = crypto.randomBytes(4).toString('hex'); // 8 chars (em texto puro para envio ao visitante)
+      const hashedPassword = await bcrypt.hash(tempPassword, 10); // Criptografia Bcrypt para o banco de dados
 
-      // 3. Criar o User (Membro) e herdar informações do Visitante no Perfil
+      // 3. Criar o User (Membro) com a senha criptografada e herdar informações do Visitante no Perfil
       const newMember = await prisma.user.create({
         data: {
           fullName: visitor.fullName,
           email: targetEmail,
-          password: tempPassword,
+          password: hashedPassword,
           roles: ['MEMBER'],
+          connectionGroupId: visitor.connectionGroupId || null,
           memberProfile: {
             create: {
               phone: visitor.phone,
               address: visitor.fullAddress,
               neighborhood: visitor.neighborhood,
+              maritalStatus: visitor.maritalStatus || null,
               birthDate: visitor.birthDate,
               joinDate: new Date(),
               baptismDate: visitor.isBaptized ? visitor.visitDate : null,
