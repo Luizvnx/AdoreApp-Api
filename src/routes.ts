@@ -2,10 +2,11 @@ import { Router } from 'express';
 import { visitorRoutes } from './modules/visitors/visitor.routes';
 import { memberRoutes } from './modules/users/members/members.routes';
 import { authRoutes } from './modules/auth/auth.routes';
+import { authMiddleware } from './middlewares/authMiddleware';
 
 const routes = Router();
 
-// Healthcheck
+// Healthcheck (Público)
 routes.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
@@ -16,7 +17,7 @@ routes.get('/health', (_req, res) => {
 
 // Módulos da aplicação
 routes.use('/auth', authRoutes);
-routes.use('/visitors', visitorRoutes);
-routes.use('/members', memberRoutes);
+routes.use('/visitors', authMiddleware, visitorRoutes);
+routes.use('/members', authMiddleware, memberRoutes);
 
 export { routes };

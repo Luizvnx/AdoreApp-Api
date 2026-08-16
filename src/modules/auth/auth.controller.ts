@@ -1,21 +1,22 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../../middlewares/authMiddleware';
 
 export class AuthController {
   async login(req: Request, res: Response): Promise<void> {
     try {
       const { email, password } = req.body;
 
-      if (!email || !password) {
-        res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
+      if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+        res.status(400).json({ error: 'E-mail e senha válidos são obrigatórios.' });
         return;
       }
 
       const cleanEmail = email.trim().toLowerCase();
 
-      // 1. Buscar usuário cadastrado pelo e-mail
+      // 1. Buscar usuário cadastrado pelo e-mail com parameterized Prisma query
       const user = await prisma.user.findUnique({
         where: { email: cleanEmail },
         include: {
@@ -38,14 +39,12 @@ export class AuthController {
         return;
       }
 
-      // 4. Verificar senha criptografada com bcrypt (com fallback de atualização transparente para senhas legadas)
+      // 4. Verificar senha criptografada com bcrypt
       let isPasswordValid = false;
 
       if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
-        // Comparação segura de Hash Bcrypt
         isPasswordValid = await bcrypt.compare(password, user.password);
       } else {
-        // Se a senha estiver salva em texto puro no banco (legado de testes), compara e atualiza para Hash Bcrypt
         if (user.password === password) {
           isPasswordValid = true;
           const hashed = await bcrypt.hash(password, 10);
@@ -57,27 +56,76 @@ export class AuthController {
       }
 
       if (!isPasswordValid) {
-        res.status(401).json({ error: 'Senha incorreta.' });
+        res.status(401).json({ error: 'Email ou senha incorretos.' });
         return;
       }
 
-      // 5. Gerar token JWT sintético e seguro
-      const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-      const payload = btoa(JSON.stringify({
+      const primaryRole = user.roles[0] || 'MEMBER';
+
+      // 5. Gerar token JWT assinado digitalmente
+      const tokenPayload = {
         id: user.id,
         email: user.email,
         name: user.fullName,
-        role: user.roles[0] || 'MEMBER',
+        role: primaryRole,
         roles: user.roles,
-        exp: Math.floor(Date.now() / 1000) + (86400 * 7) // 7 dias
-      }));
-      const signature = crypto.createHmac('sha256', 'adorehAppSecretKeyKey2026').update(`${header}.${payload}`).digest('hex');
-      const token = `${header}.${payload}.${signature}`;
+        connectionGroupId: user.connectionGroupId
+      };
 
-      // 6. Retornar dados do usuário autenticado
+      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
+
+      // 6. Armazenar o token em Cookie HttpOnly e Secure no navegador do cliente
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
+      });
+
+      // 7. Retornar resposta ao cliente (SEM expor o token no localStorage ou body)
       res.json({
         message: 'Login realizado com sucesso.',
-        token,
+        user: {
+          id: user.id,
+          name: user.fullName,
+          email: user.email,
+          role: primaryRole,
+          roles: user.roles,
+          connectionGroupId: user.connectionGroupId
+        }
+      });
+    } catch (error) {
+      console.error('Erro na autenticação:', error);
+      res.status(500).json({ error: 'Erro interno ao realizar autenticação.' });
+    }
+  }
+
+  // Obter perfil do usuário logado via validação do Cookie HttpOnly
+  async me(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'Não autenticado.' });
+        return;
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          roles: true,
+          isActive: true,
+          connectionGroupId: true,
+        }
+      });
+
+      if (!user || !user.isActive) {
+        res.status(401).json({ error: 'Usuário não encontrado ou inativo.' });
+        return;
+      }
+
+      res.json({
         user: {
           id: user.id,
           name: user.fullName,
@@ -88,9 +136,19 @@ export class AuthController {
         }
       });
     } catch (error) {
-      console.error('Erro na autenticação:', error);
-      res.status(500).json({ error: 'Erro interno ao realizar autenticação.' });
+      console.error('Erro ao buscar dados da sessão me:', error);
+      res.status(500).json({ error: 'Erro ao resgatar perfil.' });
     }
+  }
+
+  // Logout seguro: Expira e remove o Cookie HttpOnly do navegador
+  async logout(_req: Request, res: Response): Promise<void> {
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+    });
+    res.json({ message: 'Sessão encerrada com sucesso.' });
   }
 
   // Garante que exista o usuário admin inicial cadastrado com senha criptografada em Bcrypt
@@ -117,7 +175,6 @@ export class AuthController {
         });
         console.log('✅ Usuário administrador criado com sucesso no banco (Senha salva criptografada via Bcrypt).');
       } else if (!existingAdmin.password.startsWith('$2a$') && !existingAdmin.password.startsWith('$2b$')) {
-        // Se o admin já existir mas estiver com senha em texto puro, atualiza para Hash Bcrypt
         console.log('🔒 Criptografando credencial do usuário admin no banco de dados...');
         await prisma.user.update({
           where: { id: existingAdmin.id },

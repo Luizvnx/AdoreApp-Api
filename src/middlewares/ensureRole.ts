@@ -3,16 +3,19 @@ import { Role } from '@prisma/client';
 
 export const ensureRole = (allowedRoles: Role[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    // Para simplificar o MVP, vamos checar as roles enviadas via header
-    const userRole = req.headers['x-user-role'] as string;
+    // Obtém a role autenticada de forma segura do JWT injetado pelo authMiddleware
+    const user = req.user;
 
-    if (!userRole) {
-      res.status(401).json({ error: 'Acesso negado: Perfil não informado.' });
+    if (!user) {
+      res.status(401).json({ error: 'Acesso negado: Usuário não autenticado.' });
       return;
     }
 
-    if (!allowedRoles.includes(userRole as Role) && userRole !== 'SUPER_ADMIN') {
-      res.status(403).json({ error: 'Acesso negado: Sem permissão para esta ação.' });
+    const userRoles = user.roles || [user.role];
+    const hasRole = userRoles.some((r) => allowedRoles.includes(r as Role) || r === 'SUPER_ADMIN');
+
+    if (!hasRole) {
+      res.status(403).json({ error: 'Acesso negado: Sem permissão suficiente para esta ação.' });
       return;
     }
 
