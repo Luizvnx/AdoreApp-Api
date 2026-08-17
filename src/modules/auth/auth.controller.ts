@@ -85,9 +85,10 @@ export class AuthController {
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
       });
 
-      // 7. Retornar resposta ao cliente
+      // 7. Retornar resposta ao cliente (incluindo token para suporte a navegadores com bloqueio ITP como iOS Safari)
       res.json({
         message: 'Login realizado com sucesso.',
+        token,
         user: {
           id: user.id,
           name: user.fullName,
@@ -103,7 +104,7 @@ export class AuthController {
     }
   }
 
-  // Obter perfil do usuário logado via validação do Cookie HttpOnly
+  // Obter perfil do usuário logado via validação do Cookie HttpOnly ou Header Bearer
   async me(req: Request, res: Response): Promise<void> {
     try {
       if (!req.user) {
