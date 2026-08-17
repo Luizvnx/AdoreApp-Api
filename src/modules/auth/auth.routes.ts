@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { AuthController } from './auth.controller';
-import { loginRateLimiter, loginStrictLockoutLimiter } from '../../middlewares/rateLimiter';
+import { loginRateLimiter } from '../../middlewares/rateLimiter';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 
 const authRoutes = Router();
@@ -8,7 +8,6 @@ const controller = new AuthController();
 
 authRoutes.post(
   '/login',
-  loginStrictLockoutLimiter,
   loginRateLimiter,
   (req, res) => controller.login(req, res)
 );

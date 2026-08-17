@@ -11,26 +11,44 @@ import { AuthController } from './modules/auth/auth.controller';
 const app = express();
 const PORT = process.env.PORT || 3333;
 
-// Configuração segura do CORS para cookies com credenciais
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-].filter(Boolean) as string[];
+// Habilita 'trust proxy' para que o Express reconheça os cabeçalhos HTTPS do Railway / Cloudflare / Vercel
+app.set('trust proxy', 1);
+
+// Normalização da URL do Frontend para CORS
+const configuredFrontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.trim().replace(/\/$/, '') : '';
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Permite requisições sem origin (como mobile apps, Postman ou ferramentas CLI)
+    // Permite requisições sem header origin (como chamadas backend-to-backend, Postman, mobile ou cURL)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+
+    const cleanOrigin = origin.trim().replace(/\/$/, '').toLowerCase();
+    const cleanFrontendUrl = configuredFrontendUrl.toLowerCase();
+
+    // Aceita qualquer porta de localhost ou 127.0.0.1 (ex: :5173, :5174, :3000, :4173)
+    const isLocalhost = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin);
+
+    // Se bater com FRONTEND_URL configurado nas env vars
+    const isConfiguredUrl = cleanFrontendUrl && cleanOrigin === cleanFrontendUrl;
+
+    // Domínios de hospedagem de frontend ou API (Vercel, Netlify, Railway, Render)
+    const isCloudHost =
+      cleanOrigin.endsWith('.railway.app') ||
+      cleanOrigin.endsWith('.up.railway.app') ||
+      cleanOrigin.endsWith('.vercel.app') ||
+      cleanOrigin.endsWith('.netlify.app') ||
+      cleanOrigin.endsWith('.onrender.com');
+
+    if (isLocalhost || isConfiguredUrl || isCloudHost || process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    return callback(new Error('Bloqueado pelo CORS'));
+
+    console.warn(`[CORS Warning] Origem não autorizada bloqueada: "${origin}"`);
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie']
 }));
 
 // Parser de Cookies HttpOnly

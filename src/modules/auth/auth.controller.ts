@@ -74,15 +74,18 @@ export class AuthController {
 
       const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
 
+      // Detecta se a conexão é HTTPS (direta ou via proxy do Railway)
+      const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
+
       // 6. Armazenar o token em Cookie HttpOnly e Secure no navegador do cliente
       res.cookie('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        secure: isHttps,
+        sameSite: isHttps ? 'none' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
       });
 
-      // 7. Retornar resposta ao cliente (SEM expor o token no localStorage ou body)
+      // 7. Retornar resposta ao cliente
       res.json({
         message: 'Login realizado com sucesso.',
         user: {
@@ -142,11 +145,13 @@ export class AuthController {
   }
 
   // Logout seguro: Expira e remove o Cookie HttpOnly do navegador
-  async logout(_req: Request, res: Response): Promise<void> {
+  async logout(req: Request, res: Response): Promise<void> {
+    const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
+
     res.clearCookie('token', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+      secure: isHttps,
+      sameSite: isHttps ? 'none' : 'lax'
     });
     res.json({ message: 'Sessão encerrada com sucesso.' });
   }
