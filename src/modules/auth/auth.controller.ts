@@ -17,12 +17,20 @@ export class AuthController {
       const cleanEmail = email.trim().toLowerCase();
 
       // 1. Buscar usuário cadastrado pelo e-mail com parameterized Prisma query
+      // 1. Buscar usuário cadastrado pelo e-mail com parameterized Prisma query
       const user = await prisma.user.findUnique({
         where: { email: cleanEmail },
         include: {
           memberProfile: true,
           connectionGroup: {
-            select: { id: true, name: true }
+            select: {
+              id: true,
+              name: true,
+              neighborhood: true,
+              meetingDay: true,
+              meetingTime: true,
+              leader: { select: { fullName: true } }
+            }
           }
         }
       });
@@ -85,7 +93,7 @@ export class AuthController {
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
       });
 
-      // 7. Retornar resposta ao cliente (incluindo token para suporte a navegadores com bloqueio ITP como iOS Safari)
+      // 7. Retornar resposta ao cliente
       res.json({
         message: 'Login realizado com sucesso.',
         token,
@@ -95,7 +103,9 @@ export class AuthController {
           email: user.email,
           role: primaryRole,
           roles: user.roles,
-          connectionGroupId: user.connectionGroupId
+          connectionGroupId: user.connectionGroupId,
+          connectionGroup: user.connectionGroup,
+          memberProfile: user.memberProfile
         }
       });
     } catch (error) {
@@ -121,6 +131,29 @@ export class AuthController {
           roles: true,
           isActive: true,
           connectionGroupId: true,
+          connectionGroup: {
+            select: {
+              id: true,
+              name: true,
+              neighborhood: true,
+              meetingDay: true,
+              meetingTime: true,
+              leader: { select: { fullName: true } }
+            }
+          },
+          memberProfile: {
+            select: {
+              phone: true,
+              address: true,
+              zipCode: true,
+              neighborhood: true,
+              birthDate: true,
+              joinDate: true,
+              baptismDate: true,
+              maritalStatus: true,
+              ministries: true,
+            }
+          }
         }
       });
 
@@ -136,7 +169,9 @@ export class AuthController {
           email: user.email,
           role: user.roles[0] || 'MEMBER',
           roles: user.roles,
-          connectionGroupId: user.connectionGroupId
+          connectionGroupId: user.connectionGroupId,
+          connectionGroup: user.connectionGroup,
+          memberProfile: user.memberProfile
         }
       });
     } catch (error) {
