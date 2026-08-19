@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { visitorService } from './visitor.service';
+import { MESSAGES } from '../../constants/messages';
+import { handleApiError } from '../../utils/errorHandler';
 
 export class VisitorController {
   private getIdParam(id: string | string[] | undefined): string | null {
@@ -12,15 +14,14 @@ export class VisitorController {
     try {
       const { fullName } = req.body;
       if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
-        res.status(400).json({ error: 'O nome completo (fullName) é obrigatório.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.REQUIRED_FIELDS });
         return;
       }
 
       const visitor = await visitorService.create(req.body);
       res.status(201).json(visitor);
     } catch (error: any) {
-      console.error('[VisitorController.create] Error:', error);
-      res.status(400).json({ error: error.message || 'Falha ao cadastrar visitante.' });
+      handleApiError(res, error, MESSAGES.ERRORS.VISITOR_REGISTER_FAILED);
     }
   }
 
@@ -36,8 +37,7 @@ export class VisitorController {
 
       res.status(200).json(visitors);
     } catch (error) {
-      console.error('[VisitorController.findAll] Error:', error);
-      res.status(500).json({ error: 'Falha ao buscar visitantes.' });
+      handleApiError(res, error, MESSAGES.ERRORS.VISITOR_FETCH_FAILED);
     }
   }
 
@@ -45,20 +45,19 @@ export class VisitorController {
     try {
       const id = this.getIdParam(req.params.id);
       if (!id) {
-        res.status(400).json({ error: 'ID é obrigatório.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.INVALID_ID });
         return;
       }
 
       const visitor = await visitorService.findById(id);
       if (!visitor) {
-        res.status(404).json({ error: 'Visitante não encontrado.' });
+        res.status(404).json({ error: MESSAGES.ERRORS.VISITOR_NOT_FOUND });
         return;
       }
 
       res.status(200).json(visitor);
     } catch (error) {
-      console.error('[VisitorController.findById] Error:', error);
-      res.status(500).json({ error: 'Falha ao obter visitante.' });
+      handleApiError(res, error, MESSAGES.ERRORS.VISITOR_FETCH_FAILED);
     }
   }
 
@@ -66,15 +65,14 @@ export class VisitorController {
     try {
       const id = this.getIdParam(req.params.id);
       if (!id) {
-        res.status(400).json({ error: 'ID é obrigatório.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.INVALID_ID });
         return;
       }
 
       const updatedVisitor = await visitorService.update(id, req.body);
       res.status(200).json(updatedVisitor);
     } catch (error: any) {
-      console.error('[VisitorController.update] Error:', error);
-      res.status(400).json({ error: error.message || 'Falha ao atualizar visitante.' });
+      handleApiError(res, error, MESSAGES.ERRORS.VISITOR_UPDATE_FAILED);
     }
   }
 
@@ -82,15 +80,14 @@ export class VisitorController {
     try {
       const id = this.getIdParam(req.params.id);
       if (!id) {
-        res.status(400).json({ error: 'ID é obrigatório.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.INVALID_ID });
         return;
       }
 
       await visitorService.delete(id);
       res.status(204).send();
     } catch (error) {
-      console.error('[VisitorController.delete] Error:', error);
-      res.status(500).json({ error: 'Falha ao remover visitante.' });
+      handleApiError(res, error, MESSAGES.ERRORS.VISITOR_DELETE_FAILED);
     }
   }
 }

@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { MESSAGES } from '../../constants/messages';
+import { handleApiError } from '../../utils/errorHandler';
 
 export class AttendanceController {
   // 1. Listar todos os lançamentos de frequência dos cultos
@@ -15,8 +17,7 @@ export class AttendanceController {
       });
       res.json(records);
     } catch (error) {
-      console.error('[AttendanceController.listAttendance] Error:', error);
-      res.status(500).json({ error: 'Erro ao listar frequências dos cultos.' });
+      handleApiError(res, error, MESSAGES.ERRORS.ATTENDANCE_FETCH_FAILED);
     }
   }
 
@@ -26,13 +27,13 @@ export class AttendanceController {
       const { date, serviceName, attendanceCount, notes } = req.body;
 
       if (!serviceName || typeof serviceName !== 'string' || !serviceName.trim()) {
-        res.status(400).json({ error: 'O nome do culto é obrigatório.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.ATTENDANCE_NAME_REQUIRED });
         return;
       }
 
       const countNumber = Number(attendanceCount);
       if (isNaN(countNumber) || countNumber < 0) {
-        res.status(400).json({ error: 'A quantidade de pessoas deve ser um número positivo.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.ATTENDANCE_COUNT_INVALID });
         return;
       }
 
@@ -55,8 +56,7 @@ export class AttendanceController {
 
       res.status(201).json(record);
     } catch (error) {
-      console.error('[AttendanceController.createAttendance] Error:', error);
-      res.status(500).json({ error: 'Erro ao registrar frequência do culto.' });
+      handleApiError(res, error, MESSAGES.ERRORS.ATTENDANCE_REGISTER_FAILED);
     }
   }
 
@@ -67,10 +67,9 @@ export class AttendanceController {
       await prisma.serviceAttendance.delete({
         where: { id: String(id) }
       });
-      res.json({ message: 'Lançamento de culto excluído com sucesso.' });
+      res.json({ message: MESSAGES.SUCCESS.ATTENDANCE_DELETED });
     } catch (error) {
-      console.error('[AttendanceController.deleteAttendance] Error:', error);
-      res.status(500).json({ error: 'Erro ao excluir lançamento de culto.' });
+      handleApiError(res, error, MESSAGES.ERRORS.ATTENDANCE_DELETE_FAILED);
     }
   }
 
@@ -172,8 +171,7 @@ export class AttendanceController {
         recentAttendances: attendances.slice(-10)
       });
     } catch (error) {
-      console.error('[AttendanceController.getMetrics] Error:', error);
-      res.status(500).json({ error: 'Erro ao calcular métricas da igreja.' });
+      handleApiError(res, error, MESSAGES.ERRORS.ATTENDANCE_METRICS_FAILED);
     }
   }
 }

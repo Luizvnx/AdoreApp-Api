@@ -3,6 +3,8 @@ import { prisma } from '../../../lib/prisma';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { sendTemporaryPasswordEmail } from '../../../services/email.service';
+import { MESSAGES } from '../../../constants/messages';
+import { handleApiError } from '../../../utils/errorHandler';
 
 export class MembersController {
   // Lista todos os membros com seus perfis e relacionamentos
@@ -24,8 +26,7 @@ export class MembersController {
       });
       res.json(members);
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Erro ao listar membros.' });
+      handleApiError(res, error, MESSAGES.ERRORS.MEMBER_FETCH_FAILED);
     }
   }
 
@@ -39,7 +40,7 @@ export class MembersController {
 
     // Trava de Segurança: Se não for SUPER_ADMIN, o usuário SÓ PODE alterar o seu PRÓPRIO perfil
     if (!isSuperAdmin && loggedUser?.id !== id) {
-      res.status(403).json({ error: 'Acesso negado: Você só tem permissão para editar o seu próprio perfil.' });
+      res.status(403).json({ error: MESSAGES.ERRORS.MEMBER_SELF_EDIT_ONLY });
       return;
     }
 
@@ -97,8 +98,7 @@ export class MembersController {
 
       res.json(updatedUser);
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Erro ao atualizar membro.' });
+      handleApiError(res, error, MESSAGES.ERRORS.MEMBER_UPDATE_FAILED);
     }
   }
 
@@ -113,12 +113,12 @@ export class MembersController {
       });
 
       if (!visitor) {
-        res.status(404).json({ error: 'Visitante não encontrado.' });
+        res.status(404).json({ error: MESSAGES.ERRORS.VISITOR_NOT_FOUND });
         return;
       }
 
       if (visitor.status === 'MEMBRO') {
-        res.status(400).json({ error: 'Este visitante já foi convertido em membro.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.VISITOR_ALREADY_MEMBER });
         return;
       }
 
@@ -165,7 +165,7 @@ export class MembersController {
       });
 
       if (existingUser && (requestedEmail || visitorEmail)) {
-        res.status(400).json({ error: `Já existe um usuário/membro cadastrado com o e-mail (${targetEmail}).` });
+        res.status(400).json({ error: MESSAGES.ERRORS.EMAIL_ALREADY_EXISTS });
         return;
       }
 
@@ -224,8 +224,7 @@ export class MembersController {
         }
       });
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Erro ao converter visitante em membro.' });
+      handleApiError(res, error, MESSAGES.ERRORS.MEMBER_CONVERSION_FAILED);
     }
   }
 }

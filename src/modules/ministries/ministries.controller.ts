@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { MESSAGES } from '../../constants/messages';
+import { handleApiError } from '../../utils/errorHandler';
 
 const DEFAULT_MINISTRIES = [
   'Louvor',
@@ -34,8 +36,7 @@ export class MinistryController {
 
       res.json(ministries);
     } catch (error) {
-      console.error('Erro ao listar cargos/ministérios:', error);
-      res.status(500).json({ error: 'Erro ao listar cargos e ministérios.' });
+      handleApiError(res, error, MESSAGES.ERRORS.MINISTRY_FETCH_FAILED);
     }
   }
 
@@ -45,7 +46,7 @@ export class MinistryController {
       const { name, description } = req.body;
 
       if (!name || typeof name !== 'string' || name.trim().length === 0) {
-        res.status(400).json({ error: 'O nome do cargo/ministério é obrigatório.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.MINISTRY_NAME_REQUIRED });
         return;
       }
 
@@ -61,7 +62,7 @@ export class MinistryController {
       });
 
       if (existing) {
-        res.status(400).json({ error: `O cargo "${trimmedName}" já está cadastrado.` });
+        res.status(400).json({ error: MESSAGES.ERRORS.MINISTRY_ALREADY_EXISTS });
         return;
       }
 
@@ -74,8 +75,7 @@ export class MinistryController {
 
       res.status(201).json(ministry);
     } catch (error) {
-      console.error('Erro ao criar cargo/ministério:', error);
-      res.status(500).json({ error: 'Erro ao criar cargo ou ministério.' });
+      handleApiError(res, error, MESSAGES.ERRORS.MINISTRY_CREATE_FAILED);
     }
   }
 
@@ -89,7 +89,7 @@ export class MinistryController {
       });
 
       if (!existing) {
-        res.status(404).json({ error: 'Cargo/ministério não encontrado.' });
+        res.status(404).json({ error: MESSAGES.ERRORS.MINISTRY_NOT_FOUND });
         return;
       }
 
@@ -97,10 +97,9 @@ export class MinistryController {
         where: { id: id as string },
       });
 
-      res.json({ message: 'Cargo/ministério excluído com sucesso.' });
+      res.json({ message: MESSAGES.SUCCESS.MINISTRY_DELETED });
     } catch (error) {
-      console.error('Erro ao excluir cargo/ministério:', error);
-      res.status(500).json({ error: 'Erro ao excluir cargo ou ministério.' });
+      handleApiError(res, error, MESSAGES.ERRORS.MINISTRY_DELETE_FAILED);
     }
   }
 }

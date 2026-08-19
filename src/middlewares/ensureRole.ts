@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { Role } from '@prisma/client';
+import { MESSAGES } from '../constants/messages';
 
 export const ensureRole = (allowedRoles: Role[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -7,7 +8,7 @@ export const ensureRole = (allowedRoles: Role[]) => {
     const user = req.user;
 
     if (!user) {
-      res.status(401).json({ error: 'Acesso negado: Usuário não autenticado.' });
+      res.status(401).json({ error: MESSAGES.ERRORS.UNAUTHORIZED });
       return;
     }
 
@@ -15,7 +16,7 @@ export const ensureRole = (allowedRoles: Role[]) => {
     const hasRole = userRoles.some((r) => allowedRoles.includes(r as Role) || r === 'SUPER_ADMIN');
 
     if (!hasRole) {
-      res.status(403).json({ error: 'Acesso negado: Sem permissão suficiente para esta ação.' });
+      res.status(403).json({ error: MESSAGES.ERRORS.INSUFFICIENT_PERMISSIONS });
       return;
     }
 

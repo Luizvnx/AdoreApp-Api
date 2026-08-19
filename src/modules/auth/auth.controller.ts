@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../../middlewares/authMiddleware';
 import { clearLoginAttempts } from '../../middlewares/rateLimiter';
+import { MESSAGES } from '../../constants/messages';
+import { handleApiError } from '../../utils/errorHandler';
 
 export class AuthController {
   async login(req: Request, res: Response): Promise<void> {
@@ -11,7 +13,7 @@ export class AuthController {
       const { email, password } = req.body;
 
       if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
-        res.status(400).json({ error: 'E-mail e senha válidos são obrigatórios.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.INVALID_CREDENTIALS });
         return;
       }
 
@@ -37,13 +39,13 @@ export class AuthController {
 
       // 2. Se o usuário não existir no banco
       if (!user) {
-        res.status(401).json({ error: 'Email ou senha incorretos.' });
+        res.status(401).json({ error: MESSAGES.ERRORS.INVALID_CREDENTIALS });
         return;
       }
 
       // 3. Verificar se o usuário está ativo
       if (!user.isActive) {
-        res.status(401).json({ error: 'Esta conta de usuário foi desativada.' });
+        res.status(401).json({ error: MESSAGES.ERRORS.ACCOUNT_DISABLED });
         return;
       }
 
@@ -64,7 +66,7 @@ export class AuthController {
       }
 
       if (!isPasswordValid) {
-        res.status(401).json({ error: 'Email ou senha incorretos.' });
+        res.status(401).json({ error: MESSAGES.ERRORS.INVALID_CREDENTIALS });
         return;
       }
 
@@ -112,8 +114,7 @@ export class AuthController {
         }
       });
     } catch (error) {
-      console.error('Erro na autenticação:', error);
-      res.status(500).json({ error: 'Erro interno ao realizar autenticação.' });
+      handleApiError(res, error, MESSAGES.ERRORS.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -121,7 +122,7 @@ export class AuthController {
   async me(req: Request, res: Response): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Não autenticado.' });
+        res.status(401).json({ error: MESSAGES.ERRORS.UNAUTHORIZED });
         return;
       }
 
@@ -161,7 +162,7 @@ export class AuthController {
       });
 
       if (!user || !user.isActive) {
-        res.status(401).json({ error: 'Usuário não encontrado ou inativo.' });
+        res.status(401).json({ error: MESSAGES.ERRORS.USER_NOT_FOUND });
         return;
       }
 
@@ -178,8 +179,7 @@ export class AuthController {
         }
       });
     } catch (error) {
-      console.error('Erro ao buscar dados da sessão me:', error);
-      res.status(500).json({ error: 'Erro ao resgatar perfil.' });
+      handleApiError(res, error, MESSAGES.ERRORS.FETCH_PROFILE_FAILED);
     }
   }
 

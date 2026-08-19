@@ -7,6 +7,8 @@ import { prisma } from './lib/prisma';
 import { sqlSanitizer } from './middlewares/sqlSanitizer';
 import { globalApiRateLimiter } from './middlewares/rateLimiter';
 import { AuthController } from './modules/auth/auth.controller';
+import { MESSAGES } from './constants/messages';
+import { handleApiError } from './utils/errorHandler';
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -69,13 +71,12 @@ app.use('/', routes);
 
 // Middleware 404
 app.use((_req: Request, res: Response) => {
-  res.status(404).json({ error: 'Rota não encontrada.' });
+  res.status(404).json({ error: MESSAGES.ERRORS.ROUTE_NOT_FOUND });
 });
 
 // Middleware de tratamento global de erros
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[Unhandled Error]:', err);
-  res.status(500).json({ error: 'Erro interno no servidor.' });
+  handleApiError(res, err);
 });
 
 const server = app.listen(PORT, async () => {

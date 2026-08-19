@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { MESSAGES } from '../constants/messages';
+import { handleApiError } from '../utils/errorHandler';
 
 export interface AuthUserPayload {
   id: string;
@@ -51,10 +53,10 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
     if (!decoded) {
       if (isExpired) {
-        res.status(401).json({ error: 'Sessão expirada. Por favor, faça login novamente.' });
+        res.status(401).json({ error: MESSAGES.ERRORS.UNAUTHORIZED });
         return;
       }
-      res.status(401).json({ error: 'Acesso negado. Token de autenticação ausente ou inválido.' });
+      res.status(401).json({ error: MESSAGES.ERRORS.ACCESS_DENIED });
       return;
     }
 
@@ -74,6 +76,6 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
     next();
   } catch (err: any) {
-    res.status(401).json({ error: 'Token de autenticação inválido ou corrompido.' });
+    handleApiError(res, err, MESSAGES.ERRORS.INVALID_TOKEN);
   }
 }
