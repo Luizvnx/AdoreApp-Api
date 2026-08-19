@@ -9,6 +9,7 @@ datasource db {
 // Mapeamento dinâmico de funções
 enum Role {
   SUPER_ADMIN      // Pastores e Diretoria Executiva
+  FINANCE_ADMIN    // Tesouraria / Administração Financeira
   ADMIN_WELCOME    // Liderança do Acolhimento / Integração
   GC_SUPERVISOR    // Supervisor de Grupos de Conexão
   GC_LEADER        // Líder de GC
@@ -49,6 +50,11 @@ model User {
   connectionGroupId   String?
   connectionGroup     ConnectionGroup? @relation("GCMembers", fields: [connectionGroupId], references: [id])
   attendanceReports   ServiceAttendance[] @relation("CreatedAttendance")
+
+  // ADICIONADO: Relacionamentos Financeiros
+  financialTransactions FinancialTransaction[] @relation("CreatedTransactions")
+  editedTransactions    FinancialTransaction[] @relation("EditedTransactions")
+  fixedExpenses         FixedExpense[]         @relation("CreatedFixedExpenses")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -149,6 +155,80 @@ model ServiceAttendance {
 
   createdById     String?
   createdBy       User?    @relation("CreatedAttendance", fields: [createdById], references: [id])
+
+  transactions    FinancialTransaction[] @relation("ServiceTransactions")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Módulo Financeiro
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionCategory {
+  DIZIMO_OFERTA
+  DOACAO
+  EVENTOS
+  GASTO_FIXO
+  GASTO_VARIAVEL
+  MANUTENCAO
+  OUTROS
+}
+
+// Model para Caixa Principal/Missões/etc (Prepara para futuros múltiplos caixas)
+model FinancialAccount {
+  id          String   @id @default(uuid())
+  name        String   @unique // Ex: "Caixa Geral"
+  description String?
+  balance     Float    @default(0.0)
+  
+  transactions FinancialTransaction[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FinancialTransaction {
+  id              String   @id @default(uuid())
+  title           String   // Ex: Oferta de Domingo, Conta de Luz
+  type            TransactionType
+  amount          Float
+  date            DateTime
+  category        TransactionCategory
+  notes           String?
+  
+  // Vínculo a qual caixa pertence
+  accountId       String
+  account         FinancialAccount @relation(fields: [accountId], references: [id])
+
+  // Opcional: Vincular uma arrecadação a um culto específico
+  serviceId       String?
+  service         ServiceAttendance? @relation("ServiceTransactions", fields: [serviceId], references: [id])
+
+  createdById     String?
+  createdBy       User?    @relation("CreatedTransactions", fields: [createdById], references: [id])
+
+  editedById      String?
+  editedBy        User?    @relation("EditedTransactions", fields: [editedById], references: [id])
+  editHistory     Json?    // Array de objetos { editedAt, editedBy, changes }
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model FixedExpense {
+  id              String   @id @default(uuid())
+  title           String
+  amount          Float
+  dueDate         Int      // Dia de vencimento no mês (1-31)
+  isActive        Boolean  @default(true)
+  notes           String?
+
+  createdById     String?
+  createdBy       User?    @relation("CreatedFixedExpenses", fields: [createdById], references: [id])
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
