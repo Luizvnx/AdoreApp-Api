@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../../middlewares/authMiddleware';
+import { clearLoginAttempts } from '../../middlewares/rateLimiter';
 
 export class AuthController {
   async login(req: Request, res: Response): Promise<void> {
@@ -16,7 +17,6 @@ export class AuthController {
 
       const cleanEmail = email.trim().toLowerCase();
 
-      // 1. Buscar usuário cadastrado pelo e-mail com parameterized Prisma query
       // 1. Buscar usuário cadastrado pelo e-mail com parameterized Prisma query
       const user = await prisma.user.findUnique({
         where: { email: cleanEmail },
@@ -67,6 +67,9 @@ export class AuthController {
         res.status(401).json({ error: 'Email ou senha incorretos.' });
         return;
       }
+
+      // Limpa contador de tentativas do rate limiter após login bem-sucedido
+      clearLoginAttempts(req);
 
       const primaryRole = user.roles[0] || 'MEMBER';
 

@@ -9,15 +9,16 @@ export class MembersController {
     try {
       const members = await prisma.user.findMany({
         where: {
-          roles: {
-            has: 'MEMBER'
-          }
+          isActive: true
         },
         include: {
           memberProfile: true,
           connectionGroup: {
             select: { id: true, name: true }
           }
+        },
+        orderBy: {
+          fullName: 'asc'
         }
       });
       res.json(members);
@@ -30,7 +31,7 @@ export class MembersController {
   // Atualiza as informações do membro
   async updateMember(req: Request, res: Response) {
     const id = req.params.id as string;
-    const { fullName, password, phone, address, zipCode, neighborhood, birthDate, joinDate, baptismDate, ministries, maritalStatus, gender, connectionGroupId } = req.body;
+    const { fullName, password, phone, address, zipCode, neighborhood, birthDate, joinDate, baptismDate, ministries, maritalStatus, gender, connectionGroupId, roles } = req.body;
 
     try {
       // Criptografa a nova senha se fornecida
@@ -44,6 +45,7 @@ export class MembersController {
         where: { id },
         data: {
           fullName,
+          ...(roles && Array.isArray(roles) && roles.length > 0 ? { roles } : {}),
           ...(hashedPassword ? { password: hashedPassword } : {}),
           ...(connectionGroupId !== undefined ? { connectionGroupId: connectionGroupId || null } : {}),
           memberProfile: {

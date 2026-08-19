@@ -25,7 +25,6 @@ function getClientIp(req: Request): string {
     return forwarded.split(',')[0].trim();
   }
   const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
-  // Normaliza IPv6 localhost ::1 ou ::ffff:127.0.0.1 para 127.0.0.1
   if (ip === '::1' || ip === '::ffff:127.0.0.1') {
     return '127.0.0.1';
   }
@@ -95,6 +94,14 @@ export function loginRateLimiter(req: Request, res: Response, next: NextFunction
 
   loginAttemptsMap.set(ip, record);
   next();
+}
+
+/**
+  * Reseta o contador de tentativas para o IP do cliente após um login bem-sucedido.
+  */
+export function clearLoginAttempts(req: Request): void {
+  const ip = getClientIp(req);
+  loginAttemptsMap.delete(ip);
 }
 
 /**
