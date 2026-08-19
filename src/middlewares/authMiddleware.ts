@@ -40,7 +40,20 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
     // 3. Valida e decodifica o JWT
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUserPayload;
-    req.user = decoded;
+
+    // Suporte ao header x-override-role APENAS em ambiente de desenvolvimento/teste (Bloqueado em produção)
+    const isDev = process.env.NODE_ENV !== 'production';
+    const overrideRoleHeader = req.headers['x-override-role'];
+    if (isDev && overrideRoleHeader && typeof overrideRoleHeader === 'string' && overrideRoleHeader.trim()) {
+      const cleanOverride = overrideRoleHeader.trim();
+      req.user = {
+        ...decoded,
+        role: cleanOverride,
+        roles: [cleanOverride]
+      };
+    } else {
+      req.user = decoded;
+    }
 
     next();
   } catch (err: any) {

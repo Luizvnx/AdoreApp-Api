@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../../../lib/prisma';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { sendTemporaryPasswordEmail } from '../../../services/email.service';
 
 export class MembersController {
   // Lista todos os membros com seus perfis e relacionamentos
@@ -31,7 +32,16 @@ export class MembersController {
   // Atualiza as informações do membro
   async updateMember(req: Request, res: Response) {
     const id = req.params.id as string;
+    const loggedUser = req.user;
     const { fullName, password, phone, address, zipCode, neighborhood, birthDate, joinDate, baptismDate, ministries, maritalStatus, gender, connectionGroupId, roles } = req.body;
+
+    const isSuperAdmin = loggedUser?.roles?.includes('SUPER_ADMIN') || loggedUser?.role === 'SUPER_ADMIN';
+
+    // Trava de Segurança: Se não for SUPER_ADMIN, o usuário SÓ PODE alterar o seu PRÓPRIO perfil
+    if (!isSuperAdmin && loggedUser?.id !== id) {
+      res.status(403).json({ error: 'Acesso negado: Você só tem permissão para editar o seu próprio perfil.' });
+      return;
+    }
 
     try {
       // Criptografa a nova senha se fornecida
@@ -45,9 +55,9 @@ export class MembersController {
         where: { id },
         data: {
           fullName,
-          ...(roles && Array.isArray(roles) && roles.length > 0 ? { roles } : {}),
+          ...(isSuperAdmin && roles && Array.isArray(roles) && roles.length > 0 ? { roles } : {}),
           ...(hashedPassword ? { password: hashedPassword } : {}),
-          ...(connectionGroupId !== undefined ? { connectionGroupId: connectionGroupId || null } : {}),
+          ...(isSuperAdmin && connectionGroupId !== undefined ? { connectionGroupId: connectionGroupId || null } : {}),
           memberProfile: {
             upsert: {
               create: {
@@ -193,14 +203,20 @@ export class MembersController {
         }
       });
 
-      // MOCK: Simular envio de e-mail ao visitante
-      console.log(`\n\n[MOCK EMAIL SERVICE] E-mail enviado para ${targetEmail}`);
-      console.log(`Assunto: Bem-vindo(a) à Família Adoreh!`);
-      console.log(`Corpo: Olá ${newMember.fullName}, aqui está sua senha temporária para acesso ao aplicativo: ${tempPassword}\n\n`);
+      // 5. Enviar e-mail com a senha temporária usando Nodemailer
+      let emailSent = false;
+      try {
+        emailSent = await sendTemporaryPasswordEmail(targetEmail, newMember.fullName, tempPassword);
+      } catch (mailErr) {
+        console.error('Falha ao disparar e-mail de boas-vindas:', mailErr);
+      }
 
-      // 5. Retornar os dados gerados (inclusive informando que o e-mail foi enviado)
+      // 6. Retornar os dados gerados ao cliente
       res.json({
-        message: 'Visitante convertido em Membro com sucesso. Um e-mail com a senha temporária foi enviado.',
+        message: emailSent
+          ? 'Visitante convertido em Membro com sucesso. Um e-mail com a senha temporária foi enviado.'
+          : 'Visitante convertido em Membro com sucesso.',
+        emailSent,
         member: newMember,
         credentials: {
           email: targetEmail,

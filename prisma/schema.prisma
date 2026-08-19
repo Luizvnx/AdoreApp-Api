@@ -48,6 +48,7 @@ model User {
   // ADICIONADO: Qual Grupo de Conexão este membro frequenta (como participante, não como líder)
   connectionGroupId   String?
   connectionGroup     ConnectionGroup? @relation("GCMembers", fields: [connectionGroupId], references: [id])
+  attendanceReports   ServiceAttendance[] @relation("CreatedAttendance")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -136,4 +137,19 @@ model Ministry {
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// Frequência de Pessoas e Lançamento de Cultos da Igreja
+model ServiceAttendance {
+  id              String   @id @default(uuid())
+  date            DateTime
+  serviceName     String
+  attendanceCount Int
+  notes           String?
+
+  createdById     String?
+  createdBy       User?    @relation("CreatedAttendance", fields: [createdById], references: [id])
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
