@@ -77,8 +77,8 @@ export class AttendanceController {
   async getMetrics(req: Request, res: Response): Promise<void> {
     try {
       const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
+      const currentYear = req.query.year ? Number(req.query.year) : now.getFullYear();
+      const currentMonth = req.query.month ? Number(req.query.month) - 1 : now.getMonth();
 
       // Buscar todos os visitantes para métricas temporais
       const visitors = await prisma.visitor.findMany({
@@ -151,8 +151,13 @@ export class AttendanceController {
         return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
       }).length;
 
-      const totalServicesRegistered = attendances.length;
-      const totalAttendanceSum = attendances.reduce((acc, curr) => acc + curr.attendanceCount, 0);
+      const attendancesThisMonth = attendances.filter(a => {
+        const d = new Date(a.date);
+        return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+      });
+
+      const totalServicesRegistered = attendancesThisMonth.length;
+      const totalAttendanceSum = attendancesThisMonth.reduce((acc, curr) => acc + curr.attendanceCount, 0);
       const overallAvgAttendance = totalServicesRegistered > 0
         ? Math.round(totalAttendanceSum / totalServicesRegistered)
         : 0;
