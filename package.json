@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && prisma db push --accept-data-loss && tsc",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:db:push": "prisma db push --accept-data-loss"

@@ -4,7 +4,14 @@ import { Pool } from 'pg';
 
 const connectionString = process.env.DATABASE_URL;
 
-const pool = new Pool({ connectionString });
+const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT || !!process.env.RAILWAY_STATIC_URL;
+
+const pool = new Pool({
+  connectionString,
+  ssl: isProduction || (connectionString && connectionString.includes('sslmode='))
+    ? { rejectUnauthorized: false }
+    : undefined
+});
 const adapter = new PrismaPg(pool);
 
 const globalForPrisma = globalThis as unknown as {

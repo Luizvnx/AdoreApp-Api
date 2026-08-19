@@ -22,24 +22,41 @@ export const JWT_SECRET = process.env.JWT_SECRET || 'adorehAppSecretKeyKey2026';
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   try {
-    // 1. Prioridade: Tenta obter o token via cookie HttpOnly 'token'
-    let token = req.cookies?.token;
+    let token: string | undefined = req.cookies?.token;
+    let decoded: AuthUserPayload | null = null;
+    let isExpired = false;
 
-    // 2. Fallback secundário: Tenta obter via Header 'Authorization: Bearer <token>'
-    if (!token && req.headers.authorization) {
-      const parts = req.headers.authorization.split(' ');
-      if (parts.length === 2 && parts[0] === 'Bearer') {
-        token = parts[1];
+    // 1. Tenta validar o token vindo do Cookie HttpOnly
+    if (token) {
+      try {
+        decoded = jwt.verify(token, JWT_SECRET) as AuthUserPayload;
+      } catch (err: any) {
+        if (err.name === 'TokenExpiredError') isExpired = true;
+        token = undefined; // Cookie expirado ou inválido, desconsidera para tentar o header
       }
     }
 
-    if (!token) {
-      res.status(401).json({ error: 'Acesso negado. Token de autenticação ausente ou sessão finalizada.' });
-      return;
+    // 2. Se o cookie não existir ou for inválido, tenta o Header 'Authorization: Bearer <token>'
+    if (!decoded && req.headers.authorization) {
+      const parts = req.headers.authorization.split(' ');
+      if (parts.length === 2 && parts[0] === 'Bearer') {
+        const headerToken = parts[1];
+        try {
+          decoded = jwt.verify(headerToken, JWT_SECRET) as AuthUserPayload;
+        } catch (err: any) {
+          if (err.name === 'TokenExpiredError') isExpired = true;
+        }
+      }
     }
 
-    // 3. Valida e decodifica o JWT
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUserPayload;
+    if (!decoded) {
+      if (isExpired) {
+        res.status(401).json({ error: 'Sessão expirada. Por favor, faça login novamente.' });
+        return;
+      }
+      res.status(401).json({ error: 'Acesso negado. Token de autenticação ausente ou inválido.' });
+      return;
+    }
 
     // Suporte ao header x-override-role APENAS em ambiente de desenvolvimento/teste (Bloqueado em produção)
     const isDev = process.env.NODE_ENV !== 'production';
@@ -57,10 +74,6 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
     next();
   } catch (err: any) {
-    if (err.name === 'TokenExpiredError') {
-      res.status(401).json({ error: 'Sessão expirada. Por favor, faça login novamente.' });
-      return;
-    }
     res.status(401).json({ error: 'Token de autenticação inválido ou corrompido.' });
   }
 }

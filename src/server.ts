@@ -48,7 +48,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie', 'x-override-role']
 }));
 
 // Parser de Cookies HttpOnly
