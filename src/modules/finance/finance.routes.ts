@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { FinanceController } from './finance.controller';
 import { ensureRole } from '../../middlewares/ensureRole';
+import { Role } from '@prisma/client';
 
 const financeRoutes = Router();
 const financeController = new FinanceController();
 
 // Roles de leitura (Diretoria pode ver, mas não editar)
-const readRoles = ['SUPER_ADMIN', 'FINANCE_ADMIN', 'PASTOR', 'DIRECTOR'];
+const readRoles: Role[] = ['SUPER_ADMIN', 'FINANCE_ADMIN', 'PASTOR', 'DIRECTOR'];
 // Roles de escrita
-const writeRoles = ['SUPER_ADMIN', 'FINANCE_ADMIN', 'PASTOR'];
+const writeRoles: Role[] = ['SUPER_ADMIN', 'FINANCE_ADMIN', 'PASTOR'];
 
 // Transações
 financeRoutes.post('/transactions', ensureRole(writeRoles), financeController.createTransaction.bind(financeController));

@@ -153,7 +153,7 @@ export class MembersController {
   // Excluir membro
   async deleteMember(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
       const loggedUser = req.user;
       
       const isSuperAdmin = loggedUser?.roles?.includes('SUPER_ADMIN');
