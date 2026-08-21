@@ -24,6 +24,9 @@ export class AuthController {
         where: { email: cleanEmail },
         include: {
           memberProfile: true,
+          congregation: {
+            select: { id: true, name: true, isHeadquarter: true }
+          },
           connectionGroup: {
             select: {
               id: true,
@@ -75,13 +78,14 @@ export class AuthController {
 
       const primaryRole = user.roles[0] || 'MEMBER';
 
-      // 5. Gerar token JWT assinado digitalmente
+      // 5. Gerar token JWT assinado digitalmente com congregationId
       const tokenPayload = {
         id: user.id,
         email: user.email,
         name: user.fullName,
         role: primaryRole,
         roles: user.roles,
+        congregationId: user.congregationId,
         connectionGroupId: user.connectionGroupId
       };
 
@@ -108,6 +112,8 @@ export class AuthController {
           email: user.email,
           role: primaryRole,
           roles: user.roles,
+          congregationId: user.congregationId,
+          congregation: user.congregation,
           connectionGroupId: user.connectionGroupId,
           connectionGroup: user.connectionGroup,
           memberProfile: user.memberProfile
@@ -134,6 +140,10 @@ export class AuthController {
           email: true,
           roles: true,
           isActive: true,
+          congregationId: true,
+          congregation: {
+            select: { id: true, name: true, isHeadquarter: true }
+          },
           connectionGroupId: true,
           connectionGroup: {
             select: {
@@ -173,6 +183,8 @@ export class AuthController {
           email: user.email,
           role: user.roles[0] || 'MEMBER',
           roles: user.roles,
+          congregationId: user.congregationId,
+          congregation: user.congregation,
           connectionGroupId: user.connectionGroupId,
           connectionGroup: user.connectionGroup,
           memberProfile: user.memberProfile

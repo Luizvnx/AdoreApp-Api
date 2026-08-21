@@ -31,6 +31,27 @@ enum VisitorStatus {
   INATIVO
 }
 
+// Model para Congregações (Sede e Filiais)
+model Congregation {
+  id            String    @id @default(uuid())
+  name          String    // Ex: "Sede Central (Matriz)", "Filial Jardim América"
+  address       String?
+  phone         String?
+  foundedAt     DateTime?
+  isHeadquarter Boolean   @default(false)
+
+  // Relacionamentos com os módulos
+  users                 User[]
+  visitors              Visitor[]
+  connectionGroups      ConnectionGroup[]
+  financialAccounts     FinancialAccount[]
+  financialTransactions FinancialTransaction[]
+  fixedExpenses         FixedExpense[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
 // Usuários do APP (Líderes, Pastores, Membros Ativos)
 model User {
   id        String   @id @default(uuid())
@@ -40,6 +61,10 @@ model User {
   roles     Role[]   // Array permitindo acumular múltiplos cargos
   isActive  Boolean  @default(true)
   
+  // Vínculo com a Congregação
+  congregationId String?
+  congregation   Congregation? @relation(fields: [congregationId], references: [id])
+
   // Relacionamentos: O que esse usuário fez/gerencia?
   visitorsRegistered  Visitor[] @relation("RegisteredBy")
   convertedVisitors   Visitor[] @relation("ConvertedVisitor")
@@ -76,6 +101,10 @@ model Visitor {
   visitDate       DateTime       @default(now())
   
   status          VisitorStatus  @default(PENDENTE)
+
+  // Vínculo com a Congregação
+  congregationId  String?
+  congregation    Congregation?  @relation(fields: [congregationId], references: [id])
   
   // ADICIONADO: @unique colocado aqui, pois uma ficha de visitante só pode gerar UM membro
   userId          String?        @unique 
@@ -101,6 +130,10 @@ model ConnectionGroup {
   meetingDay   String?  // Ex: "Terça-feira"
   meetingTime  String?  // Ex: "19:30"
   
+  // Vínculo com a Congregação
+  congregationId String?
+  congregation   Congregation? @relation(fields: [congregationId], references: [id])
+
   // Líder responsável pelo GC
   leaderId     String?
   leader       User?    @relation("GCLeader", fields: [leaderId], references: [id])
@@ -178,6 +211,15 @@ enum TransactionCategory {
   OUTROS
 }
 
+enum PaymentMethod {
+  PIX
+  DINHEIRO
+  DEBITO
+  CREDITO
+  TRANSFERENCIA
+  OUTRO
+}
+
 // Model para Caixa Principal/Missões/etc (Prepara para futuros múltiplos caixas)
 model FinancialAccount {
   id          String   @id @default(uuid())
@@ -185,6 +227,10 @@ model FinancialAccount {
   description String?
   balance     Float    @default(0.0)
   
+  // Vínculo com a Congregação
+  congregationId String?
+  congregation   Congregation? @relation(fields: [congregationId], references: [id])
+
   transactions FinancialTransaction[]
   
   createdAt   DateTime @default(now())
@@ -198,8 +244,13 @@ model FinancialTransaction {
   amount          Float
   date            DateTime
   category        TransactionCategory
+  paymentMethod   PaymentMethod @default(PIX)
   notes           String?
   
+  // Vínculo com a Congregação
+  congregationId  String?
+  congregation    Congregation? @relation(fields: [congregationId], references: [id])
+
   // Vínculo a qual caixa pertence
   accountId       String
   account         FinancialAccount @relation(fields: [accountId], references: [id])
@@ -226,6 +277,10 @@ model FixedExpense {
   dueDate         Int      // Dia de vencimento no mês (1-31)
   isActive        Boolean  @default(true)
   notes           String?
+
+  // Vínculo com a Congregação
+  congregationId  String?
+  congregation    Congregation? @relation(fields: [congregationId], references: [id])
 
   createdById     String?
   createdBy       User?    @relation("CreatedFixedExpenses", fields: [createdById], references: [id])

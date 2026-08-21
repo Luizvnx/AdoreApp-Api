@@ -8,6 +8,8 @@ import { authRoutes } from './modules/auth/auth.routes';
 import { financeRoutes } from './modules/finance/finance.routes';
 import { authMiddleware } from './middlewares/authMiddleware';
 
+import { congregationRoutes } from './modules/congregations/congregation.routes';
+
 const routes = Router();
 
 // Healthcheck (Público)
@@ -27,5 +29,6 @@ routes.use('/ministries', authMiddleware, ministryRoutes);
 routes.use('/connection-groups', authMiddleware, connectionGroupRoutes);
 routes.use('/attendance', authMiddleware, attendanceRoutes);
 routes.use('/finance', authMiddleware, financeRoutes);
+routes.use('/congregations', authMiddleware, congregationRoutes);
 
 export { routes };

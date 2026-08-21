@@ -10,12 +10,28 @@ export class MembersController {
   // Lista todos os membros com seus perfis e relacionamentos
   async listMembers(req: Request, res: Response) {
     try {
+      const user = req.user;
+      const isSuperAdmin = user?.roles?.includes('SUPER_ADMIN');
+      const paramCongregationId = req.query.congregationId as string;
+
+      let where: any = { isActive: true };
+      if (isSuperAdmin) {
+        if (paramCongregationId && paramCongregationId !== 'ALL') {
+          where.congregationId = paramCongregationId;
+        }
+      } else {
+        if (user?.congregationId) {
+          where.congregationId = user.congregationId;
+        }
+      }
+
       const members = await prisma.user.findMany({
-        where: {
-          isActive: true
-        },
+        where,
         include: {
           memberProfile: true,
+          congregation: {
+            select: { id: true, name: true }
+          },
           connectionGroup: {
             select: { id: true, name: true }
           }

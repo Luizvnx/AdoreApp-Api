@@ -5,22 +5,42 @@ const DEFAULT_GCS = ['IDE', 'Reobote', 'Chosen', 'Rebecas'];
 
 export class ConnectionGroupController {
   // Lista todos os Grupos de Conexão (GCs). Carrega os GCs padrão (IDE, Reobote, Chosen, Rebecas) se a tabela estiver vazia.
-  async listGroups(_req: Request, res: Response): Promise<void> {
+  async listGroups(req: Request, res: Response): Promise<void> {
     try {
-      let count = await prisma.connectionGroup.count();
+      const user = req.user;
+      const isSuperAdmin = user?.roles?.includes('SUPER_ADMIN');
+      const paramCongregationId = req.query.congregationId as string;
 
-      if (count === 0) {
+      let where: any = {};
+      if (isSuperAdmin) {
+        if (paramCongregationId && paramCongregationId !== 'ALL') {
+          where.congregationId = paramCongregationId;
+        }
+      } else {
+        if (user?.congregationId) {
+          where.congregationId = user.congregationId;
+        }
+      }
+
+      let count = await prisma.connectionGroup.count({ where });
+
+      if (count === 0 && (!isSuperAdmin || paramCongregationId === 'ALL')) {
+        const defaultCongregationId = user?.congregationId || (await prisma.congregation.findFirst({ where: { isHeadquarter: true } }))?.id;
         await prisma.connectionGroup.createMany({
-          data: DEFAULT_GCS.map((name) => ({ name })),
+          data: DEFAULT_GCS.map((name) => ({ name, congregationId: defaultCongregationId })),
           skipDuplicates: true,
         });
       }
 
       const groups = await prisma.connectionGroup.findMany({
+        where,
         orderBy: { name: 'asc' },
         include: {
           leader: {
             select: { id: true, fullName: true, email: true }
+          },
+          congregation: {
+            select: { id: true, name: true }
           },
           _count: {
             select: { members: true, visitors: true }
@@ -39,6 +59,10 @@ export class ConnectionGroupController {
   async createGroup(req: Request, res: Response): Promise<void> {
     try {
       const { name, neighborhood, meetingDay, meetingTime, leaderId } = req.body;
+      const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+      const congregationId = (isSuperAdmin && req.body.congregationId)
+        ? req.body.congregationId
+        : req.user?.congregationId;
 
       if (!name || typeof name !== 'string' || name.trim().length === 0) {
         res.status(400).json({ error: 'O nome do Grupo de Conexão (GC) é obrigatório.' });
@@ -53,11 +77,12 @@ export class ConnectionGroupController {
             equals: trimmedName,
             mode: 'insensitive',
           },
+          ...(congregationId ? { congregationId } : {})
         },
       });
 
       if (existing) {
-        res.status(400).json({ error: `O GC "${trimmedName}" já está cadastrado.` });
+        res.status(400).json({ error: `O GC "${trimmedName}" já está cadastrado nesta congregação.` });
         return;
       }
 
@@ -68,9 +93,11 @@ export class ConnectionGroupController {
           meetingDay: meetingDay?.trim() || null,
           meetingTime: meetingTime?.trim() || null,
           leaderId: leaderId || null,
+          congregationId: congregationId || null,
         },
         include: {
           leader: { select: { id: true, fullName: true } },
+          congregation: { select: { id: true, name: true } },
           _count: { select: { members: true, visitors: true } }
         }
       });

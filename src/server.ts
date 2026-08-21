@@ -79,6 +79,8 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   handleApiError(res, err);
 });
 
+import { ensureHeadquarterCongregation } from './lib/seedCongregation';
+
 const server = app.listen(PORT, async () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🔗 Healthcheck disponível em: http://localhost:${PORT}/health`);
@@ -86,6 +88,7 @@ const server = app.listen(PORT, async () => {
   console.log(`🔗 API Visitantes disponível em: http://localhost:${PORT}/api/visitors`);
   
   await AuthController.seedInitialUserIfNeeded();
+  await ensureHeadquarterCongregation();
 });
 
 const gracefulShutdown = async () => {

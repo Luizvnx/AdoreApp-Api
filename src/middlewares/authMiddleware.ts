@@ -9,6 +9,7 @@ export interface AuthUserPayload {
   name: string;
   role: string;
   roles: string[];
+  congregationId?: string | null;
   connectionGroupId?: string | null;
 }
 

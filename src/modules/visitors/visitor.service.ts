@@ -15,6 +15,7 @@ export interface CreateVisitorDTO {
   visitDate?: string | Date;
   registeredById?: string;
   connectionGroupId?: string;
+  congregationId?: string;
 }
 
 export interface UpdateVisitorDTO extends Partial<CreateVisitorDTO> {}
@@ -45,7 +46,7 @@ export class VisitorService {
   }
 
   async create(data: CreateVisitorDTO) {
-    const { birthDate, visitDate, email, connectionGroupId, ...rest } = data;
+    const { birthDate, visitDate, email, connectionGroupId, congregationId, ...rest } = data;
     const cleanEmail = email && typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null;
 
     if (cleanEmail) {
@@ -57,6 +58,7 @@ export class VisitorService {
         ...rest,
         email: cleanEmail,
         connectionGroupId: connectionGroupId || null,
+        congregationId: congregationId || null,
         birthDate: birthDate ? new Date(birthDate) : undefined,
         visitDate: visitDate ? new Date(visitDate) : undefined,
       },
@@ -67,15 +69,22 @@ export class VisitorService {
         connectionGroup: {
           select: { id: true, name: true },
         },
+        congregation: {
+          select: { id: true, name: true }
+        }
       },
     });
   }
 
-  async findAll(params?: { search?: string; neighborhood?: string; wantsToJoinGC?: boolean; connectionGroupId?: string }) {
+  async findAll(params?: { search?: string; neighborhood?: string; wantsToJoinGC?: boolean; connectionGroupId?: string; congregationId?: string }) {
     // Não listar visitantes que já foram convertidos em Membros
     const where: Prisma.VisitorWhereInput = {
       status: { not: 'MEMBRO' },
     };
+
+    if (params?.congregationId) {
+      where.congregationId = params.congregationId;
+    }
 
     if (params?.search) {
       where.OR = [

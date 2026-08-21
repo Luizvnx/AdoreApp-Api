@@ -80,8 +80,24 @@ export class AttendanceController {
       const currentYear = req.query.year ? Number(req.query.year) : now.getFullYear();
       const currentMonth = req.query.month ? Number(req.query.month) - 1 : now.getMonth();
 
+      const user = req.user;
+      const isSuperAdmin = user?.roles?.includes('SUPER_ADMIN');
+      const paramCongregationId = req.query.congregationId as string;
+
+      let congregationFilter: any = {};
+      if (isSuperAdmin) {
+        if (paramCongregationId && paramCongregationId !== 'ALL') {
+          congregationFilter.congregationId = paramCongregationId;
+        }
+      } else {
+        if (user?.congregationId) {
+          congregationFilter.congregationId = user.congregationId;
+        }
+      }
+
       // Buscar todos os visitantes para métricas temporais
       const visitors = await prisma.visitor.findMany({
+        where: congregationFilter,
         select: {
           id: true,
           visitDate: true,

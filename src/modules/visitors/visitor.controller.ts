@@ -18,7 +18,16 @@ export class VisitorController {
         return;
       }
 
-      const visitor = await visitorService.create(req.body);
+      const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+      const congregationId = (isSuperAdmin && req.body.congregationId)
+        ? req.body.congregationId
+        : req.user?.congregationId;
+
+      const visitor = await visitorService.create({
+        ...req.body,
+        registeredById: req.user?.id,
+        congregationId
+      });
       res.status(201).json(visitor);
     } catch (error: any) {
       handleApiError(res, error, MESSAGES.ERRORS.VISITOR_REGISTER_FAILED);
@@ -27,12 +36,24 @@ export class VisitorController {
 
   async findAll(req: Request, res: Response): Promise<void> {
     try {
-      const { search, neighborhood, wantsToJoinGC } = req.query;
+      const { search, neighborhood, wantsToJoinGC, congregationId: queryCongregationId } = req.query;
+      const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+
+      let targetCongregationId: string | undefined = undefined;
+
+      if (isSuperAdmin) {
+        if (queryCongregationId && typeof queryCongregationId === 'string' && queryCongregationId !== 'ALL') {
+          targetCongregationId = queryCongregationId;
+        }
+      } else {
+        targetCongregationId = req.user?.congregationId || undefined;
+      }
 
       const visitors = await visitorService.findAll({
         search: typeof search === 'string' ? search : undefined,
         neighborhood: typeof neighborhood === 'string' ? neighborhood : undefined,
         wantsToJoinGC: wantsToJoinGC === 'true' ? true : wantsToJoinGC === 'false' ? false : undefined,
+        congregationId: targetCongregationId
       });
 
       res.status(200).json(visitors);

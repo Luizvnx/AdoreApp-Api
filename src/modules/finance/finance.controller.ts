@@ -2,11 +2,11 @@ import { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 
 export class FinanceController {
-  
+
   // Cria uma nova transação financeira de forma segura e atômica
   async createTransaction(req: Request, res: Response) {
     try {
-      const { title, type, amount, date, category, notes, serviceId, accountId } = req.body;
+      const { title, type, amount, date, category, paymentMethod, notes, serviceId, accountId } = req.body;
       const createdById = req.user?.id;
 
       if (!title || !type || amount === undefined || !date || !category) {
@@ -18,17 +18,25 @@ export class FinanceController {
         return res.status(400).json({ error: 'O valor da transação deve ser maior que zero.' });
       }
 
+      const validPaymentMethod = paymentMethod || 'PIX';
+
+      // Determina a congregação (SUPER_ADMIN pode informar; outros usam estritamente a sua congregação)
+      const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+      const congregationId = (isSuperAdmin && req.body.congregationId)
+        ? req.body.congregationId
+        : req.user?.congregationId;
+
       // Executa a busca/criação da conta e a transação dentro do $transaction para garantir Atomicidade (ACID)
       const transactionResult = await prisma.$transaction(async (tx) => {
-        
+
         let targetAccountId = accountId;
-        
+
         // 1. Garante que a conta existe usando Upsert (evita Race Conditions)
         if (!targetAccountId) {
           const defaultAccount = await tx.financialAccount.upsert({
             where: { name: 'Caixa Geral' },
             update: {},
-            create: { name: 'Caixa Geral', description: 'Caixa principal da igreja' }
+            create: { name: 'Caixa Geral', description: 'Caixa principal da igreja', congregationId }
           });
           targetAccountId = defaultAccount.id;
         }
@@ -41,16 +49,18 @@ export class FinanceController {
             amount: numericAmount,
             date: new Date(date),
             category,
+            paymentMethod: validPaymentMethod,
             notes,
             serviceId,
             accountId: targetAccountId,
+            congregationId,
             createdById
           }
         });
 
         // 3. Atualiza o saldo consolidado da conta
         const balanceChange = type === 'INCOME' ? numericAmount : -numericAmount;
-        
+
         await tx.financialAccount.update({
           where: { id: targetAccountId },
           data: { balance: { increment: balanceChange } }
@@ -70,13 +80,15 @@ export class FinanceController {
   async updateTransaction(req: Request, res: Response) {
     try {
       const id = req.params.id as string;
-      const { title, type, amount, date, category, notes, serviceId, accountId } = req.body;
+      const { title, type, amount, date, category, paymentMethod, notes, serviceId, accountId } = req.body;
       const editedById = req.user?.id;
 
       const numericAmount = Number(amount);
       if (numericAmount <= 0) {
         return res.status(400).json({ error: 'O valor da transação deve ser maior que zero.' });
       }
+
+      const validPaymentMethod = paymentMethod || 'PIX';
 
       const transactionResult = await prisma.$transaction(async (tx) => {
         const oldTransaction = await tx.financialTransaction.findUnique({
@@ -94,8 +106,9 @@ export class FinanceController {
         if (oldTransaction.type !== type) changes.type = { old: oldTransaction.type, new: type };
         if (oldTransaction.amount !== numericAmount) changes.amount = { old: oldTransaction.amount, new: numericAmount };
         if (oldTransaction.category !== category) changes.category = { old: oldTransaction.category, new: category };
+        if ((oldTransaction as any).paymentMethod !== validPaymentMethod) changes.paymentMethod = { old: (oldTransaction as any).paymentMethod, new: validPaymentMethod };
         if (oldTransaction.notes !== notes) changes.notes = { old: oldTransaction.notes, new: notes };
-        
+
         // Se a data mudou (comparação de datas é mais chata)
         const newDate = new Date(date);
         if (oldTransaction.date.getTime() !== newDate.getTime()) {
@@ -107,10 +120,17 @@ export class FinanceController {
           return oldTransaction;
         }
 
+        // Busca o nome do usuário que efetuou a alteração
+        const editor = editedById
+          ? await tx.user.findUnique({ where: { id: editedById }, select: { fullName: true } })
+          : null;
+        const editedByName = editor?.fullName || (req.user as any)?.name || 'Usuário';
+
         // Prepara o registro do histórico
         const historyEntry = {
           editedAt: new Date().toISOString(),
           editedById,
+          editedByName,
           changes
         };
 
@@ -142,11 +162,16 @@ export class FinanceController {
             amount: numericAmount,
             date: newDate,
             category,
+            paymentMethod: validPaymentMethod,
             notes,
             serviceId,
             accountId: accountId || oldTransaction.accountId,
             editedById,
             editHistory: newHistory
+          },
+          include: {
+            createdBy: { select: { fullName: true } },
+            editedBy: { select: { fullName: true } }
           }
         });
 
@@ -163,30 +188,78 @@ export class FinanceController {
     }
   }
 
-  // Lista transações (com filtro opcional por mês/ano)
+  // Lista transações com suporte a relatórios (Tipo, Período, Datas, Forma de Pagamento)
   async listTransactions(req: Request, res: Response) {
     try {
-      console.log("[FINANCE] listTransactions called");
       const month = req.query.month as string;
       const year = req.query.year as string;
       const category = req.query.category as string;
-      
-      let dateFilter: any = {};
-      if (month && year) {
-        const startDate = new Date(Number(year), Number(month) - 1, 1);
-        const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59); // último dia do mês
-        dateFilter.date = {
-          gte: startDate,
-          lte: endDate
-        };
+      const type = req.query.type as string;
+      const paymentMethod = req.query.paymentMethod as string;
+      const period = req.query.period as string;
+      const startDateQuery = req.query.startDate as string;
+      const endDateQuery = req.query.endDate as string;
+
+      let filter: any = {};
+
+      // Isolamento por Congregação (Segurança: usuários comuns só acessam sua congregação)
+      const user = req.user;
+      const isSuperAdmin = user?.roles?.includes('SUPER_ADMIN');
+      const paramCongregationId = req.query.congregationId as string;
+
+      if (isSuperAdmin) {
+        if (paramCongregationId && paramCongregationId !== 'ALL') {
+          filter.congregationId = paramCongregationId;
+        }
+      } else {
+        if (user?.congregationId) {
+          filter.congregationId = user.congregationId;
+        }
       }
 
+      // Filtro de Data
+      if (startDateQuery && endDateQuery) {
+        const start = new Date(startDateQuery);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(endDateQuery);
+        end.setHours(23, 59, 59, 999);
+        filter.date = { gte: start, lte: end };
+      } else if (period === 'WEEK') {
+        const now = new Date();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay()); // Domingo
+        startOfWeek.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+        filter.date = { gte: startOfWeek, lte: endOfWeek };
+      } else if (period === 'YEAR' && year) {
+        const startOfYear = new Date(Number(year), 0, 1, 0, 0, 0);
+        const endOfYear = new Date(Number(year), 11, 31, 23, 59, 59);
+        filter.date = { gte: startOfYear, lte: endOfYear };
+      } else if (month && year) {
+        const startDate = new Date(Number(year), Number(month) - 1, 1, 0, 0, 0);
+        const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+        filter.date = { gte: startDate, lte: endDate };
+      }
+
+      // Filtro de Categoria
       if (category && category !== 'ALL') {
-        dateFilter.category = category;
+        filter.category = category;
+      }
+
+      // Filtro de Tipo (Entradas / Saídas)
+      if (type && type !== 'ALL') {
+        filter.type = type;
+      }
+
+      // Filtro de Forma de Pagamento (Pix, Dinheiro, Débito, Crédito, etc)
+      if (paymentMethod && paymentMethod !== 'ALL') {
+        filter.paymentMethod = paymentMethod;
       }
 
       const transactions = await prisma.financialTransaction.findMany({
-        where: dateFilter,
+        where: filter,
         orderBy: { date: 'desc' },
         include: {
           service: { select: { serviceName: true } },
@@ -206,17 +279,17 @@ export class FinanceController {
   async deleteTransaction(req: Request, res: Response) {
     try {
       const id = req.params.id as string;
-      
+
       await prisma.$transaction(async (tx) => {
         const transaction = await tx.financialTransaction.findUnique({ where: { id } });
-        
+
         if (!transaction) {
           throw new Error('NOT_FOUND');
         }
 
         // Reverte o saldo na conta associada
         const balanceChange = transaction.type === 'INCOME' ? -transaction.amount : transaction.amount;
-        
+
         await tx.financialAccount.update({
           where: { id: transaction.accountId },
           data: { balance: { increment: balanceChange } }
@@ -288,6 +361,8 @@ export class FinanceController {
     try {
       const month = req.query.month as string;
       const year = req.query.year as string;
+      const paramCongregationId = req.query.congregationId as string;
+
       const currentDate = new Date();
       const targetMonth = month ? Number(month) : currentDate.getMonth() + 1;
       const targetYear = year ? Number(year) : currentDate.getFullYear();
@@ -295,9 +370,25 @@ export class FinanceController {
       const startDate = new Date(targetYear, targetMonth - 1, 1);
       const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
 
-      // Transações do mês
+      // Trava de segurança para congregações
+      const user = req.user;
+      const isSuperAdmin = user?.roles?.includes('SUPER_ADMIN');
+
+      let congregationFilter: any = {};
+      if (isSuperAdmin) {
+        if (paramCongregationId && paramCongregationId !== 'ALL') {
+          congregationFilter.congregationId = paramCongregationId;
+        }
+      } else {
+        if (user?.congregationId) {
+          congregationFilter.congregationId = user.congregationId;
+        }
+      }
+
+      // 1. Transações do mês selecionado
       const transactions = await prisma.financialTransaction.findMany({
         where: {
+          ...congregationFilter,
           date: { gte: startDate, lte: endDate }
         }
       });
@@ -316,15 +407,31 @@ export class FinanceController {
         }
       });
 
-      // Saldo da Conta Principal
-      const defaultAccount = await prisma.financialAccount.findFirst();
-      const currentBalance = defaultAccount ? defaultAccount.balance : 0;
+      // 2. Cálculo do Saldo Total em Caixa (Consolidado de todas as transações ou saldo das contas)
+      const allTimeIncomeAgg = await prisma.financialTransaction.aggregate({
+        _sum: { amount: true },
+        where: { ...congregationFilter, type: 'INCOME' }
+      });
+      const allTimeExpenseAgg = await prisma.financialTransaction.aggregate({
+        _sum: { amount: true },
+        where: { ...congregationFilter, type: 'EXPENSE' }
+      });
 
-      // Gastos fixos projetados (da tabela FixedExpense)
-      const fixedExpenses = await prisma.fixedExpense.findMany({ where: { isActive: true } });
+      const accounts = await prisma.financialAccount.findMany({
+        where: congregationFilter
+      });
+      const accountsBalance = accounts.reduce((acc, a) => acc + a.balance, 0);
+
+      const netTransactionsBalance = (allTimeIncomeAgg._sum.amount || 0) - (allTimeExpenseAgg._sum.amount || 0);
+      const currentBalance = accountsBalance > 0 ? accountsBalance : netTransactionsBalance;
+
+      // 3. Gastos fixos projetados
+      const fixedExpenses = await prisma.fixedExpense.findMany({
+        where: { ...congregationFilter, isActive: true }
+      });
       const projectedFixedExpenses = fixedExpenses.reduce((acc, curr) => acc + curr.amount, 0);
 
-      // Histórico dos últimos 6 meses (para gráfico de barras)
+      // 4. Histórico dos últimos 6 meses (para gráficos)
       const monthlyHistory = [];
       for (let i = 5; i >= 0; i--) {
         const mDate = new Date(targetYear, targetMonth - 1 - i, 1);
@@ -333,7 +440,10 @@ export class FinanceController {
 
         const mTrans = await prisma.financialTransaction.groupBy({
           by: ['type'],
-          where: { date: { gte: mStart, lte: mEnd } },
+          where: {
+            ...congregationFilter,
+            date: { gte: mStart, lte: mEnd }
+          },
           _sum: { amount: true }
         });
 

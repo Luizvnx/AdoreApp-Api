@@ -21,5 +21,6 @@ financeRoutes.delete('/fixed-expenses/:id', financeController.deleteFixedExpense
 
 // Dashboard Financeiro
 financeRoutes.get('/dashboard', financeController.getDashboardMetrics.bind(financeController));
+financeRoutes.get('/metrics', financeController.getDashboardMetrics.bind(financeController));
 
 export { financeRoutes };
