@@ -150,7 +150,139 @@ export class MembersController {
     }
   }
 
-  // Excluir membro
+  // Cadastrar Novo Membro
+  async createMember(req: Request, res: Response): Promise<void> {
+    const loggedUser = req.user;
+    const {
+      fullName,
+      email,
+      password,
+      phone,
+      address,
+      zipCode,
+      neighborhood,
+      birthDate,
+      joinDate,
+      baptismDate,
+      ministries,
+      maritalStatus,
+      gender,
+      connectionGroupId,
+      roles,
+      congregationId
+    } = req.body;
+
+    const isSuperAdmin = loggedUser?.roles?.includes('SUPER_ADMIN') || loggedUser?.role === 'SUPER_ADMIN';
+    const isPastor = loggedUser?.roles?.includes('PASTOR') || loggedUser?.role === 'PASTOR';
+
+    if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
+      res.status(400).json({ error: 'O nome completo é obrigatório.' });
+      return;
+    }
+
+    try {
+      // Definir congregação
+      let finalCongregationId = loggedUser?.congregationId || null;
+      if (isSuperAdmin && congregationId) {
+        finalCongregationId = congregationId;
+      }
+
+      // Definir Email
+      let targetEmail: string;
+      const requestedEmail = email && typeof email === 'string' && email.trim();
+
+      if (requestedEmail) {
+        targetEmail = requestedEmail.toLowerCase();
+        
+        // Verificar se e-mail já existe no User
+        const existingUser = await prisma.user.findUnique({ where: { email: targetEmail } });
+        const existingVisitor = await prisma.visitor.findFirst({ where: { email: targetEmail } });
+
+        // Se existir um visitante órfão (status MEMBRO sem user), remove ele para evitar conflitos
+        if (existingVisitor && existingVisitor.status === 'MEMBRO' && !existingUser) {
+          await prisma.visitor.delete({ where: { id: existingVisitor.id } });
+        } else if (existingUser || existingVisitor) {
+          res.status(400).json({ error: MESSAGES.ERRORS.EMAIL_ALREADY_EXISTS });
+          return;
+        }
+      } else {
+        // Se e-mail não for informado, gerar um e-mail legível
+        const firstName = fullName
+          .trim()
+          .split(' ')[0]
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]/g, '') || 'membro';
+
+        const phoneDigits = phone ? phone.replace(/\D/g, '') : '';
+        const baseIdentifier = phoneDigits || Math.floor(1000 + Math.random() * 9000).toString();
+
+        targetEmail = `${firstName}.${baseIdentifier}@aviva.com`;
+        let counter = 2;
+        while (await prisma.user.findUnique({ where: { email: targetEmail } })) {
+          targetEmail = `${firstName}.${baseIdentifier}.${counter}@aviva.com`;
+          counter++;
+        }
+      }
+
+      // Definir Senha
+      const rawPassword = (password && typeof password === 'string' && password.trim().length > 0)
+        ? password.trim()
+        : crypto.randomBytes(4).toString('hex');
+      const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+      // Definir Roles
+      let finalRoles = ['MEMBER'];
+      if ((isSuperAdmin || isPastor) && roles && Array.isArray(roles) && roles.length > 0) {
+        finalRoles = roles;
+      }
+
+      // Criar o Usuário + MemberProfile
+      const newMember = await prisma.user.create({
+        data: {
+          fullName: fullName.trim(),
+          email: targetEmail,
+          password: hashedPassword,
+          roles: finalRoles as any,
+          congregationId: finalCongregationId,
+          connectionGroupId: connectionGroupId || null,
+          memberProfile: {
+            create: {
+              phone: phone || null,
+              address: address || null,
+              zipCode: zipCode || null,
+              neighborhood: neighborhood || null,
+              maritalStatus: maritalStatus || null,
+              gender: gender || null,
+              birthDate: birthDate ? new Date(birthDate) : null,
+              joinDate: joinDate ? new Date(joinDate) : new Date(),
+              baptismDate: baptismDate ? new Date(baptismDate) : null,
+              ministries: ministries || []
+            }
+          }
+        },
+        include: {
+          memberProfile: true,
+          congregation: { select: { id: true, name: true } },
+          connectionGroup: { select: { id: true, name: true } }
+        }
+      });
+
+      res.status(201).json({
+        message: 'Membro cadastrado com sucesso!',
+        member: newMember,
+        credentials: {
+          email: targetEmail,
+          password: rawPassword
+        }
+      });
+    } catch (error) {
+      handleApiError(res, error, 'Erro ao cadastrar novo membro.');
+    }
+  }
+
+  // Excluir membro (Remoção total e definitiva do Banco de Dados)
   async deleteMember(req: Request, res: Response): Promise<void> {
     try {
       const id = req.params.id as string;
@@ -165,7 +297,10 @@ export class MembersController {
         return;
       }
 
-      const targetUser = await prisma.user.findUnique({ where: { id } });
+      const targetUser = await prisma.user.findUnique({
+        where: { id },
+        select: { id: true, email: true, congregationId: true }
+      });
       
       if (!targetUser) {
         res.status(404).json({ error: MESSAGES.ERRORS.MEMBER_NOT_FOUND });
@@ -185,13 +320,61 @@ export class MembersController {
          return;
       }
 
-      await prisma.user.delete({
-        where: { id }
+      const emailToClean = targetUser.email ? targetUser.email.trim().toLowerCase() : null;
+
+      // 1. Limpar e apagar fichas de visitante vinculadas ao usuário ou com o mesmo e-mail
+      await prisma.visitor.deleteMany({
+        where: {
+          OR: [
+            { userId: targetUser.id },
+            ...(emailToClean ? [{ email: emailToClean }] : [])
+          ]
+        }
       });
 
-      res.json({ message: 'Membro excluído com sucesso.' });
+      // 2. Desvincular de cadastros onde este usuário figurava como o cadastrador
+      await prisma.visitor.updateMany({
+        where: { registeredById: targetUser.id },
+        data: { registeredById: null }
+      });
+
+      // 3. Desvincular de GCs liderados por ele
+      await prisma.connectionGroup.updateMany({
+        where: { leaderId: targetUser.id },
+        data: { leaderId: null }
+      });
+
+      // 4. Desvincular relatórios de cultos e transações financeiras
+      await prisma.serviceAttendance.updateMany({
+        where: { createdById: targetUser.id },
+        data: { createdById: null }
+      });
+      await prisma.financialTransaction.updateMany({
+        where: { createdById: targetUser.id },
+        data: { createdById: null }
+      });
+      await prisma.financialTransaction.updateMany({
+        where: { editedById: targetUser.id },
+        data: { editedById: null }
+      });
+      await prisma.fixedExpense.updateMany({
+        where: { createdById: targetUser.id },
+        data: { createdById: null }
+      });
+
+      // 5. Apagar o perfil detalhado (MemberProfile)
+      await prisma.memberProfile.deleteMany({
+        where: { userId: targetUser.id }
+      });
+
+      // 6. Apagar o registro User definitivamente do Banco de Dados
+      await prisma.user.delete({
+        where: { id: targetUser.id }
+      });
+
+      res.json({ message: 'Membro e todas as suas fichas associadas foram excluídos permanentemente do banco de dados.' });
     } catch (error) {
-      handleApiError(res, error, 'Erro ao excluir membro.');
+      handleApiError(res, error, 'Erro ao excluir membro do banco de dados.');
     }
   }
 

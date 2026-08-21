@@ -41,7 +41,12 @@ export class VisitorService {
       },
     });
     if (existingVisitor) {
-      throw new Error('Este e-mail já está cadastrado para outro visitante.');
+      if (existingVisitor.status === 'MEMBRO' && !existingUser) {
+        // Visitante órfão resultante de exclusão de membro anterior - apaga para liberar o e-mail
+        await prisma.visitor.delete({ where: { id: existingVisitor.id } });
+      } else {
+        throw new Error('Este e-mail já está cadastrado para outro visitante.');
+      }
     }
   }
 

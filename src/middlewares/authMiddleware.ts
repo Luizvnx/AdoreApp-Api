@@ -61,20 +61,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       return;
     }
 
-    // Suporte ao header x-override-role APENAS em ambiente de desenvolvimento/teste (Bloqueado em produção)
-    const isDev = process.env.NODE_ENV !== 'production';
-    const overrideRoleHeader = req.headers['x-override-role'];
-    if (isDev && overrideRoleHeader && typeof overrideRoleHeader === 'string' && overrideRoleHeader.trim()) {
-      const cleanOverride = overrideRoleHeader.trim();
-      req.user = {
-        ...decoded,
-        role: cleanOverride,
-        roles: [cleanOverride]
-      };
-    } else {
-      req.user = decoded;
-    }
-
+    req.user = decoded;
     next();
   } catch (err: any) {
     handleApiError(res, err, MESSAGES.ERRORS.INVALID_TOKEN);
