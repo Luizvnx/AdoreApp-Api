@@ -1,18 +1,18 @@
 # 🕊️ AdorehApp — API Backend
 
-API RESTful desenvolvida em **Node.js**, **Express**, **TypeScript** e **Prisma ORM**, voltada para o gerenciamento de membros, visitantes e lideranças eclesiásticas.
+API RESTful de alta performance desenvolvida em **Node.js**, **Express**, **TypeScript** e **Prisma ORM**, voltada para a gestão de multi-congregações (Sede e Filiais), membros, visitantes, tesouraria e lideranças eclesiásticas.
 
 ---
 
 ## 🛠️ Tecnologias Utilizadas
 
-- **Runtime:** Node.js (v22+)
+- **Runtime:** Node.js (v20+)
 - **Linguagem:** TypeScript
 - **Framework:** Express.js
-- **ORM:** Prisma (v7 com driver `pg` / `@prisma/adapter-pg`)
+- **ORM:** Prisma ORM (v7 com adaptador `@prisma/adapter-pg`)
 - **Banco de Dados:** PostgreSQL 16
-- **Execução & Hot-Reload:** `tsx watch`
-- **Ambiente de Containers:** Docker / Docker Compose
+- **Autenticação:** JWT com suporte a Cookie HttpOnly e Header Authorization
+- **Segurança:** Bcrypt (Hash de senhas), Helmet, SQL Sanitizer, Rate Limiter e CORS dinâmico
 
 ---
 
@@ -20,156 +20,97 @@ API RESTful desenvolvida em **Node.js**, **Express**, **TypeScript** e **Prisma 
 
 ### Pré-requisitos
 - Node.js (v20+) instalado
-- Docker Desktop instalado e em execução (para banco de dados local)
+- Instância do PostgreSQL rodando (localmente ou via Railway/Supabase)
 
-### 1. Clonar e Instalar Dependências
+### 1. Instalar Dependências
 ```bash
-cd api-adorehApp
+cd AdoreApp-Api
 npm install
+```
 
 ### 2. Configurar Variáveis de Ambiente
-Crie um arquivo chamado .env na raiz da pasta api-adorehApp e adicione:
-```
-DATABASE_URL="postgresql://postgres:postgrespassword@localhost:5432/adorehapp?schema=public"
+Crie um arquivo `.env` na raiz da pasta `AdoreApp-Api`:
+```env
+DATABASE_URL="postgresql://postgres:suasenha@localhost:5432/adorehapp?schema=public"
 PORT=3333
+JWT_SECRET="suaChaveSecretaJWT2026"
+FRONTEND_URL="http://localhost:5173"
+NODE_ENV="development"
+```
 
-### 3. Sincronizar o Banco de Dados
-Execute o comando para criar as tabelas com base no schema definido em prisma/schema.prisma:
-
-Copiar código
+### 3. Sincronizar o Banco de Dados (Prisma)
+```bash
 npx prisma db push
+npx prisma generate
+```
 
-### 4. Iniciar o Servidor em Modo de Desenvolvimento
+### 4. Iniciar o Servidor
 ```bash
 npm run dev
 ```
-O servidor iniciará em `http://localhost:3333` e recarregará automaticamente a cada alteração no código.
+O servidor iniciará em `http://localhost:3333`. Na primeira execução, o servidor executará automaticamente a garantia da congregação **"Sede Central (Matriz)"** e o usuário administrador inicial (`admin@adorehapp.com`).
 
 ---
 
-## 🏗️ Estrutura do Projeto
+## 🗄️ Modelo de Banco de Dados (Prisma Schema)
+
+- **Congregation**: Congregações da igreja (Sede Principal e Filiais).
+- **User**: Usuários e membros do sistema com `roles[]` e vínculo a `congregationId`.
+- **Visitor**: Ficha de cadastro de visitantes.
+- **ConnectionGroup**: Grupos de Conexão (Células).
+- **MemberProfile**: Perfil detalhado de membresia.
+- **Ministry**: Cargos e ministérios cadastrados.
+- **ServiceAttendance**: Registro de presença e métricas de cultos.
+- **FinancialAccount**: Caixas da tesouraria.
+- **FinancialTransaction**: Lançamentos financeiros atômicos com `paymentMethod` (PIX, DINHEIRO, DEBITO, CREDITO, TRANSFERENCIA, OUTRO) e histórico de auditoria em `editHistory`.
+- **FixedExpense**: Gastos fixos da igreja.
+
+---
+
+## ⚡ Endpoints Principais DA API (`/api`)
+
+### Autenticação (`/api/auth`)
+- `POST /api/auth/login` — Autenticação com Bcrypt e emissão de JWT.
+- `GET /api/auth/me` — Dados do perfil e congregação do usuário logado.
+- `POST /api/auth/logout` — Encerramento seguro de sessão.
+
+### Multi-Congregações (`/api/congregations`)
+- `GET /api/congregations` — Listar congregações.
+- `POST /api/congregations` — Cadastrar nova filial (`SUPER_ADMIN`).
+- `PUT /api/congregations/:id` — Atualizar dados ou definir como Sede (`SUPER_ADMIN`).
+- `DELETE /api/congregations/:id` — Excluir filial (`SUPER_ADMIN`).
+- `GET /api/congregations/dashboard-report` — Métricas consolidadas das igrejas.
+
+### Tesouraria (`/api/finance`)
+- `POST /api/finance/transactions` — Lançar transação atômica.
+- `GET /api/finance/transactions` — Listar transações com filtros (Tipo, Período, Forma de Pagamento).
+- `PUT /api/finance/transactions/:id` — Editar transação registrando histórico do operador.
+- `GET /api/finance/dashboard` ou `/api/finance/metrics` — Dashboard financeiro com saldo consolidado e histórico de 6 meses.
+- `POST /api/finance/fixed-expenses` — Cadastrar gasto fixo.
+- `GET /api/finance/fixed-expenses` — Listar gastos fixos.
+
+### Visitantes & Membros (`/api/visitors` & `/api/members`)
+- `GET /api/visitors` / `POST /api/visitors` — Gestão de visitantes por congregação.
+- `GET /api/members` / `PUT /api/members/:id` — Gestão de membros.
+- `POST /api/members/convert-visitor/:id` — Converter visitante em membro com senha aleatória Bcrypt.
+
+---
+
+## 🔐 Segurança & Multi-Congregação
+
+1. **Assinatura JWT com `congregationId`**: O Token assinado inclui o ID da congregação do usuário.
+2. **Isolamento de Dados em Todos os Controllers**: Usuários comuns (tesoureiros, líderes de célula) são forçados pela API a consultar e cadastrar dados estritamente dentro da sua própria filial.
+3. **Visão Global Pastoral**: Apenas usuários com a função `SUPER_ADMIN` podem alternar o parâmetro `congregationId` ou solicitar relatórios agregados `ALL`.
+
+---
+
+## 📦 Build e Compilação
+```bash
+npm run build
 ```
-api-adorehApp/
-├── src/
-│   ├── server.ts         # Inicialização do servidor e configuração do Express
-│   ├── routes/             # Rotas da API (visitors, members, users, etc.)
-│   ├── config/           # Configurações (database, cors, etc.)
-│   ├── controllers/        # Lógica de negócio das rotas
-│   └── middlewares/      # Middlewares customizados (auth, error handling)
-├── prisma/
-│   ├── schema.prisma       # Definição do modelo de dados
-│   └── client.ts         # Instância do cliente Prisma
-├── .env                    # Variáveis de ambiente (credenciais, portas)
-├── package.json            # Dependências e scripts
-└── tsconfig.json           # Configuração do TypeScript
-```
-
----
-
-## 🗄️ Modelo de Banco de Dados (Resumo)
-
-O schema define as seguintes coleções principais:
-
-- **Member:** Membros da igreja
-- **Visitor:** Visitantes
-- **MemberFamily:** Relações familiares
-- **User:** Usuários do sistema (administradores e pastores)
-- **Log:** Trilha de auditoria
-- **VisitorLog:** Logs específicos de visitantes
-
----
-
-## ⚡ Endpoints Principais
-
-O servidor expõe as seguintes rotas:
-
-### Health
-- `GET /health` — Status da aplicação e conexão com o banco
-
-### Visitors
-- `GET /api/visitors` — Listar todos os visitantes
-- `POST /api/visitors` — Criar novo visitante
-- `GET /api/visitors/:id` — Buscar visitante por ID
-- `PATCH /api/visitors/:id` — Atualizar visitante
-- `DELETE /api/visitors/:id` — Remover visitante
-
-### Members
-- `GET /api/members` — Listar todos os membros
-- `POST /api/members` — Criar novo membro
-- `GET /api/members/:id` — Buscar membro por ID
-- `PATCH /api/members/:id` — Atualizar membro
-- `DELETE /api/members/:id` — Remover membro
-
-### Users (Admin/Pastor)
-- `POST /api/users/login` — Login de usuários
-- `GET /api/users/me` — Dados do usuário logado
-
-### Reports
-- `GET /api/reports/monthly-visitors` — Relatório de visitantes por mês
-- `GET /api/reports/new-members-this-month` — Novos membros do mês
-
----
-
-## 🔐 Autenticação e Autorização
-
-A API implementa um sistema de autenticação baseado em JWT (JSON Web Tokens).
-
-- **Roles Suportadas:**
-  - `SUPER_ADMIN` — Acesso total
-  - `ADMIN_WELCOME` — Acesso ao módulo de acolhimento
-  - `PASTOR` — Acesso pastoral
-
----
-
-## 🧪 Testes
-
-Para testar a aplicação localmente:
-1. Certifique-se de que o PostgreSQL está rodando e o banco está sincronizado (`npx prisma db push`).
-2. Rode `npm run dev`.
-3. Utilize ferramentas como Postman, Insomnia ou Thunder Client para enviar requisições:
-   - **POST** `/api/users/login` — Obter token
-   - **GET** `/api/visitors` — Listar visitantes
-   - **POST** `/api/visitors` — Criar visitante
-
----
-
-## 📦 Deploy
-
-### Docker
-Para containerizar a aplicação:
-1. Crie um `Dockerfile` na raiz do projeto (exemplo básico):
-```dockerfile
-FROM node:22-alpine
-WORKDIR /app
-COPY package*.json .
-RUN npm install
-COPY . .
-EXPOSE 3333
-CMD ["npm", "run", "dev"]
-```
-2. Rode: `docker build . -t api-adorehapp`
-3. Inicie: `docker run -p 3333:3333 -e DATABASE_URL="..." api-adorehapp`
-
-### Cloud (Railway / Supabase / Neon)
-1. Configure as variáveis de ambiente na plataforma:
-   - `DATABASE_URL`
-   - `PORT`
-2. Conecte o repositório à plataforma para deploy automático.
+Compila o TypeScript (`tsc`) após regerar o Prisma Client.
 
 ---
 
 ## 📄 Licença
-
-Este projeto é proprietário. Todos os direitos reservados. Consulte o arquivo `LICENSE` para mais informações.
-
----
-
-## 🤝 Contribuindo
-
-Este projeto é de uso exclusivo para a igreja. O acesso, cópia ou distribuição não autorizados são estritamente proibidos.
-
----
-
-## 📞 Suporte
-
-Para dúvidas ou suporte técnico, entre em contato com a equipe de desenvolvimento.
+Este projeto é proprietário e de uso exclusivo da instituição. Todos os direitos reservados.
