@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma';
 const DEFAULT_GCS = ['IDE', 'Reobote', 'Chosen', 'Rebecas'];
 
 export class ConnectionGroupController {
-  // Lista todos os Grupos de Conexão (GCs). Carrega os GCs padrão (IDE, Reobote, Chosen, Rebecas) se a tabela estiver vazia.
+  // Lista todos os Grupos de Conexão (GCs). Carrega os GCs padrão se a tabela estiver vazia.
   async listGroups(req: Request, res: Response): Promise<void> {
     try {
       const user = req.user;
@@ -37,7 +37,32 @@ export class ConnectionGroupController {
         orderBy: { name: 'asc' },
         include: {
           leader: {
-            select: { id: true, fullName: true, email: true }
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              memberProfile: {
+                select: { phone: true }
+              }
+            }
+          },
+          members: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              memberProfile: {
+                select: { phone: true }
+              }
+            }
+          },
+          visitors: {
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              status: true
+            }
           },
           congregation: {
             select: { id: true, name: true }
@@ -96,7 +121,34 @@ export class ConnectionGroupController {
           congregationId: congregationId || null,
         },
         include: {
-          leader: { select: { id: true, fullName: true } },
+          leader: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              memberProfile: {
+                select: { phone: true }
+              }
+            }
+          },
+          members: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              memberProfile: {
+                select: { phone: true }
+              }
+            }
+          },
+          visitors: {
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              status: true
+            }
+          },
           congregation: { select: { id: true, name: true } },
           _count: { select: { members: true, visitors: true } }
         }
@@ -140,7 +192,35 @@ export class ConnectionGroupController {
           ...(leaderId !== undefined ? { leaderId: leaderId || null } : {}),
         },
         include: {
-          leader: { select: { id: true, fullName: true } },
+          leader: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              memberProfile: {
+                select: { phone: true }
+              }
+            }
+          },
+          members: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              memberProfile: {
+                select: { phone: true }
+              }
+            }
+          },
+          visitors: {
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              status: true
+            }
+          },
+          congregation: { select: { id: true, name: true } },
           _count: { select: { members: true, visitors: true } }
         }
       });
