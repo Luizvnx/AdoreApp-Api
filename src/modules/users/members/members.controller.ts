@@ -50,17 +50,48 @@ export class MembersController {
   async updateMember(req: Request, res: Response) {
     const id = req.params.id as string;
     const loggedUser = req.user;
-    const { fullName, password, phone, address, zipCode, neighborhood, birthDate, joinDate, baptismDate, ministries, maritalStatus, gender, connectionGroupId, roles } = req.body;
+    const { fullName, password, phone, address, zipCode, neighborhood, birthDate, joinDate, baptismDate, ministries, maritalStatus, gender, connectionGroupId, roles, congregationId } = req.body;
 
     const isSuperAdmin = loggedUser?.roles?.includes('SUPER_ADMIN') || loggedUser?.role === 'SUPER_ADMIN';
-
-    // Trava de Segurança: Se não for SUPER_ADMIN, o usuário SÓ PODE alterar o seu PRÓPRIO perfil
-    if (!isSuperAdmin && loggedUser?.id !== id) {
-      res.status(403).json({ error: MESSAGES.ERRORS.MEMBER_SELF_EDIT_ONLY });
-      return;
-    }
+    const isPastor = loggedUser?.roles?.includes('PASTOR') || loggedUser?.role === 'PASTOR';
+    const isDirector = loggedUser?.roles?.includes('DIRECTOR') || loggedUser?.role === 'DIRECTOR';
+    
+    // As demais categorias, exceto membros e lideres de louvor e de GC podem editar os membros
+    const cannotEditOthers = loggedUser?.roles?.some(r => ['MEMBER', 'WORSHIP_LEADER', 'GC_LEADER'].includes(r));
+    const canEditOthers = isSuperAdmin || (!cannotEditOthers);
 
     try {
+      const targetUser = await prisma.user.findUnique({ where: { id } });
+      if (!targetUser) {
+        res.status(404).json({ error: MESSAGES.ERRORS.MEMBER_NOT_FOUND });
+        return;
+      }
+
+      // Trava de Segurança: Isolamento de Filial e Permissão de Edição
+      if (!isSuperAdmin) {
+        if (canEditOthers) {
+          if (targetUser.congregationId !== loggedUser?.congregationId) {
+            res.status(403).json({ error: "Acesso negado: Você só pode editar membros da sua própria filial." });
+            return;
+          }
+        } else if (loggedUser?.id !== id) {
+          res.status(403).json({ error: MESSAGES.ERRORS.MEMBER_SELF_EDIT_ONLY });
+          return;
+        }
+      }
+
+      // Apenas SUPER_ADMIN pode mudar a congregação (transferência de filial)
+      let finalCongregationId = targetUser.congregationId;
+      if (isSuperAdmin && congregationId !== undefined) {
+        finalCongregationId = congregationId || null;
+      }
+
+      // Apenas administradores podem mudar roles
+      let finalRoles = targetUser.roles;
+      if ((isSuperAdmin || isPastor) && roles && Array.isArray(roles) && roles.length > 0) {
+        finalRoles = roles;
+      }
+
       // Criptografa a nova senha se fornecida
       let hashedPassword: string | undefined = undefined;
       if (password && typeof password === 'string' && password.trim().length > 0) {
@@ -72,9 +103,10 @@ export class MembersController {
         where: { id },
         data: {
           fullName,
-          ...(isSuperAdmin && roles && Array.isArray(roles) && roles.length > 0 ? { roles } : {}),
+          roles: finalRoles,
+          congregationId: finalCongregationId,
           ...(hashedPassword ? { password: hashedPassword } : {}),
-          ...(isSuperAdmin && connectionGroupId !== undefined ? { connectionGroupId: connectionGroupId || null } : {}),
+          ...((isSuperAdmin || isPastor || isDirector) && connectionGroupId !== undefined ? { connectionGroupId: connectionGroupId || null } : {}),
           memberProfile: {
             upsert: {
               create: {
@@ -115,6 +147,51 @@ export class MembersController {
       res.json(updatedUser);
     } catch (error) {
       handleApiError(res, error, MESSAGES.ERRORS.MEMBER_UPDATE_FAILED);
+    }
+  }
+
+  // Excluir membro
+  async deleteMember(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const loggedUser = req.user;
+      
+      const isSuperAdmin = loggedUser?.roles?.includes('SUPER_ADMIN');
+      const isPastor = loggedUser?.roles?.includes('PASTOR');
+      const isDirector = loggedUser?.roles?.includes('DIRECTOR');
+
+      if (!isSuperAdmin && !isPastor && !isDirector) {
+        res.status(403).json({ error: 'Acesso negado: Apenas administradores, pastores e diretoria podem excluir membros.' });
+        return;
+      }
+
+      const targetUser = await prisma.user.findUnique({ where: { id } });
+      
+      if (!targetUser) {
+        res.status(404).json({ error: MESSAGES.ERRORS.MEMBER_NOT_FOUND });
+        return;
+      }
+
+      if (!isSuperAdmin) {
+        if (targetUser.congregationId !== loggedUser?.congregationId) {
+          res.status(403).json({ error: 'Acesso negado: Você só pode excluir membros da sua própria filial.' });
+          return;
+        }
+      }
+
+      // Prevenir exclusão de si mesmo
+      if (targetUser.id === loggedUser?.id) {
+         res.status(400).json({ error: 'Você não pode excluir sua própria conta.' });
+         return;
+      }
+
+      await prisma.user.delete({
+        where: { id }
+      });
+
+      res.json({ message: 'Membro excluído com sucesso.' });
+    } catch (error) {
+      handleApiError(res, error, 'Erro ao excluir membro.');
     }
   }
 
@@ -196,6 +273,7 @@ export class MembersController {
           password: hashedPassword,
           roles: ['MEMBER'],
           connectionGroupId: visitor.connectionGroupId || null,
+          congregationId: visitor.congregationId || null,
           memberProfile: {
             create: {
               phone: visitor.phone,

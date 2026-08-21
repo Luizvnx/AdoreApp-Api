@@ -124,6 +124,12 @@ export class ConnectionGroupController {
         return;
       }
 
+      const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+      if (!isSuperAdmin && existing.congregationId !== req.user?.congregationId) {
+        res.status(403).json({ error: 'Acesso negado: Este GC pertence a outra congregação.' });
+        return;
+      }
+
       const updated = await prisma.connectionGroup.update({
         where: { id: id as string },
         data: {
@@ -157,6 +163,12 @@ export class ConnectionGroupController {
 
       if (!existing) {
         res.status(404).json({ error: 'Grupo de Conexão (GC) não encontrado.' });
+        return;
+      }
+
+      const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+      if (!isSuperAdmin && existing.congregationId !== req.user?.congregationId) {
+        res.status(403).json({ error: 'Acesso negado: Este GC pertence a outra congregação.' });
         return;
       }
 

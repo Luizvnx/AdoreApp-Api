@@ -9,6 +9,8 @@ datasource db {
 // Mapeamento dinâmico de funções
 enum Role {
   SUPER_ADMIN      // Pastores e Diretoria Executiva
+  PASTOR           // Pastor Local (Administrador da Filial)
+  DIRECTOR         // Diretoria Auxiliar (Acesso limitado em áreas críticas como finanças)
   FINANCE_ADMIN    // Tesouraria / Administração Financeira
   ADMIN_WELCOME    // Liderança do Acolhimento / Integração
   GC_SUPERVISOR    // Supervisor de Grupos de Conexão

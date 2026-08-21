@@ -100,6 +100,11 @@ export class FinanceController {
           throw new Error('NOT_FOUND');
         }
 
+        const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+        if (!isSuperAdmin && oldTransaction.congregationId !== req.user?.congregationId) {
+          throw new Error('FORBIDDEN');
+        }
+
         // Gera o diff (o que mudou)
         const changes: Record<string, { old: any; new: any }> = {};
         if (oldTransaction.title !== title) changes.title = { old: oldTransaction.title, new: title };
@@ -182,6 +187,9 @@ export class FinanceController {
     } catch (error: any) {
       if (error.message === 'NOT_FOUND') {
         return res.status(404).json({ error: 'Transação não encontrada.' });
+      }
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ error: 'Você não tem permissão para editar transações de outra filial.' });
       }
       console.error('Erro ao editar transação:', error);
       return res.status(500).json({ error: 'Erro ao editar transação.', details: error.message });
@@ -287,6 +295,11 @@ export class FinanceController {
           throw new Error('NOT_FOUND');
         }
 
+        const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+        if (!isSuperAdmin && transaction.congregationId !== req.user?.congregationId) {
+          throw new Error('FORBIDDEN');
+        }
+
         // Reverte o saldo na conta associada
         const balanceChange = transaction.type === 'INCOME' ? -transaction.amount : transaction.amount;
 
@@ -303,6 +316,9 @@ export class FinanceController {
     } catch (error: any) {
       if (error.message === 'NOT_FOUND') {
         return res.status(404).json({ error: 'Transação não encontrada.' });
+      }
+      if (error.message === 'FORBIDDEN') {
+        return res.status(403).json({ error: 'Você não tem permissão para excluir transações de outra filial.' });
       }
       return res.status(500).json({ error: 'Erro ao excluir transação.' });
     }
