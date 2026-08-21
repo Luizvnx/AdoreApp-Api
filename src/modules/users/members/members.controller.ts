@@ -198,9 +198,12 @@ export class MembersController {
         const existingUser = await prisma.user.findUnique({ where: { email: targetEmail } });
         const existingVisitor = await prisma.visitor.findFirst({ where: { email: targetEmail } });
 
-        // Se existir um visitante órfão (status MEMBRO sem user), remove ele para evitar conflitos
+        // Se existir um visitante órfão (status MEMBRO sem user), desvincula o e-mail para preservar a ficha histórica para gráficos
         if (existingVisitor && existingVisitor.status === 'MEMBRO' && !existingUser) {
-          await prisma.visitor.delete({ where: { id: existingVisitor.id } });
+          await prisma.visitor.update({
+            where: { id: existingVisitor.id },
+            data: { email: null, userId: null }
+          });
         } else if (existingUser || existingVisitor) {
           res.status(400).json({ error: MESSAGES.ERRORS.EMAIL_ALREADY_EXISTS });
           return;
@@ -322,13 +325,18 @@ export class MembersController {
 
       const emailToClean = targetUser.email ? targetUser.email.trim().toLowerCase() : null;
 
-      // 1. Limpar e apagar fichas de visitante vinculadas ao usuário ou com o mesmo e-mail
-      await prisma.visitor.deleteMany({
+      // 1. Preservar as fichas históricas de visitantes no banco (para manter os gráficos e relatórios consolidados),
+      // apenas desvinculando o userId e limpando o e-mail para permitir o recadastro.
+      await prisma.visitor.updateMany({
         where: {
           OR: [
             { userId: targetUser.id },
             ...(emailToClean ? [{ email: emailToClean }] : [])
           ]
+        },
+        data: {
+          userId: null,
+          email: null
         }
       });
 
