@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { sendTemporaryPasswordEmail } from '../../../services/email.service';
 import { MESSAGES } from '../../../constants/messages';
 import { handleApiError } from '../../../utils/errorHandler';
+import { logAuditEvent } from '../../../utils/logger';
 
 export class MembersController {
   // Lista todos os membros com seus perfis e relacionamentos
@@ -71,7 +72,7 @@ export class MembersController {
       if (!isSuperAdmin) {
         if (canEditOthers) {
           if (targetUser.congregationId !== loggedUser?.congregationId) {
-            res.status(403).json({ error: "Acesso negado: Você só pode editar membros da sua própria filial." });
+            res.status(403).json({ error: MESSAGES.ERRORS.MEMBER_EDIT_FORBIDDEN });
             return;
           }
         } else if (loggedUser?.id !== id) {
@@ -144,6 +145,11 @@ export class MembersController {
         }
       });
 
+      logAuditEvent('MEMBER_UPDATED', {
+        userId: loggedUser?.id,
+        details: { memberId: id, fullName }
+      });
+
       res.json(updatedUser);
     } catch (error) {
       handleApiError(res, error, MESSAGES.ERRORS.MEMBER_UPDATE_FAILED);
@@ -176,7 +182,7 @@ export class MembersController {
     const isPastor = loggedUser?.roles?.includes('PASTOR') || loggedUser?.role === 'PASTOR';
 
     if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
-      res.status(400).json({ error: 'O nome completo é obrigatório.' });
+      res.status(400).json({ error: MESSAGES.ERRORS.MEMBER_FULLNAME_REQUIRED });
       return;
     }
 
@@ -272,6 +278,12 @@ export class MembersController {
         }
       });
 
+      logAuditEvent('MEMBER_CREATED', {
+        userId: loggedUser?.id,
+        congregationId: finalCongregationId || undefined,
+        details: { memberId: newMember.id, fullName: newMember.fullName, email: targetEmail }
+      });
+
       res.status(201).json({
         message: 'Membro cadastrado com sucesso!',
         member: newMember,
@@ -281,7 +293,7 @@ export class MembersController {
         }
       });
     } catch (error) {
-      handleApiError(res, error, 'Erro ao cadastrar novo membro.');
+      handleApiError(res, error, MESSAGES.ERRORS.MEMBER_CREATE_FAILED);
     }
   }
 
@@ -296,7 +308,7 @@ export class MembersController {
       const isDirector = loggedUser?.roles?.includes('DIRECTOR');
 
       if (!isSuperAdmin && !isPastor && !isDirector) {
-        res.status(403).json({ error: 'Acesso negado: Apenas administradores, pastores e diretoria podem excluir membros.' });
+        res.status(403).json({ error: MESSAGES.ERRORS.MEMBER_DELETE_FORBIDDEN });
         return;
       }
 
@@ -312,14 +324,14 @@ export class MembersController {
 
       if (!isSuperAdmin) {
         if (targetUser.congregationId !== loggedUser?.congregationId) {
-          res.status(403).json({ error: 'Acesso negado: Você só pode excluir membros da sua própria filial.' });
+          res.status(403).json({ error: MESSAGES.ERRORS.MEMBER_DELETE_CONGREGATION_FORBIDDEN });
           return;
         }
       }
 
       // Prevenir exclusão de si mesmo
       if (targetUser.id === loggedUser?.id) {
-         res.status(400).json({ error: 'Você não pode excluir sua própria conta.' });
+         res.status(400).json({ error: MESSAGES.ERRORS.MEMBER_SELF_DELETE_PROHIBITED });
          return;
       }
 
@@ -380,9 +392,14 @@ export class MembersController {
         where: { id: targetUser.id }
       });
 
+      logAuditEvent('MEMBER_DELETED', {
+        userId: loggedUser?.id,
+        details: { targetMemberId: id }
+      });
+
       res.json({ message: 'Membro e todas as suas fichas associadas foram excluídos permanentemente do banco de dados.' });
     } catch (error) {
-      handleApiError(res, error, 'Erro ao excluir membro do banco de dados.');
+      handleApiError(res, error, MESSAGES.ERRORS.MEMBER_DELETE_FAILED);
     }
   }
 
@@ -495,6 +512,11 @@ export class MembersController {
       } catch (mailErr) {
         console.error('Falha ao disparar e-mail de boas-vindas:', mailErr);
       }
+
+      logAuditEvent('VISITOR_CONVERTED_TO_MEMBER', {
+        userId: req.user?.id,
+        details: { visitorId: id, newMemberId: newMember.id }
+      });
 
       // 6. Retornar os dados gerados ao cliente
       res.json({

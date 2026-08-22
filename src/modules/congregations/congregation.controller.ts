@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { handleApiError } from '../../utils/errorHandler';
+import { MESSAGES } from '../../constants/messages';
+import { logAuditEvent } from '../../utils/logger';
 
 export class CongregationController {
   // Listar todas as congregações (SUPER_ADMIN vê todas; outros veem apenas a sua própria)
@@ -8,7 +10,7 @@ export class CongregationController {
     try {
       const user = req.user;
       if (!user) {
-        res.status(401).json({ error: 'Não autorizado' });
+        res.status(401).json({ error: MESSAGES.ERRORS.UNAUTHORIZED });
         return;
       }
 
@@ -42,7 +44,7 @@ export class CongregationController {
 
       res.json(congregations);
     } catch (error) {
-      handleApiError(res, error, 'Erro ao listar congregações.');
+      handleApiError(res, error, MESSAGES.ERRORS.CONGREGATION_LIST_FAILED);
     }
   }
 
@@ -53,13 +55,13 @@ export class CongregationController {
       const user = req.user;
 
       if (!user) {
-        res.status(401).json({ error: 'Não autorizado' });
+        res.status(401).json({ error: MESSAGES.ERRORS.UNAUTHORIZED });
         return;
       }
 
       const isSuperAdmin = user.roles.includes('SUPER_ADMIN');
       if (!isSuperAdmin && user.congregationId !== id) {
-        res.status(403).json({ error: 'Acesso negado. Você só pode visualizar os dados da sua própria congregação.' });
+        res.status(403).json({ error: MESSAGES.ERRORS.INSUFFICIENT_PERMISSIONS });
         return;
       }
 
@@ -78,13 +80,13 @@ export class CongregationController {
       });
 
       if (!congregation) {
-        res.status(404).json({ error: 'Congregação não encontrada.' });
+        res.status(404).json({ error: MESSAGES.ERRORS.CONGREGATION_NOT_FOUND });
         return;
       }
 
       res.json(congregation);
     } catch (error) {
-      handleApiError(res, error, 'Erro ao buscar dados da congregação.');
+      handleApiError(res, error, MESSAGES.ERRORS.CONGREGATION_FETCH_FAILED);
     }
   }
 
@@ -93,14 +95,14 @@ export class CongregationController {
     try {
       const user = req.user;
       if (!user || !user.roles.includes('SUPER_ADMIN')) {
-        res.status(403).json({ error: 'Apenas o Pastor Presidente / SUPER_ADMIN pode cadastrar novas filiais.' });
+        res.status(403).json({ error: MESSAGES.ERRORS.INSUFFICIENT_PERMISSIONS });
         return;
       }
 
       const { name, address, phone, foundedAt, isHeadquarter } = req.body;
 
       if (!name || typeof name !== 'string' || !name.trim()) {
-        res.status(400).json({ error: 'O nome da congregação é obrigatório.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.REQUIRED_FIELDS });
         return;
       }
 
@@ -122,9 +124,14 @@ export class CongregationController {
         }
       });
 
+      logAuditEvent('CONGREGATION_CREATED', {
+        userId: user.id,
+        details: { id: congregation.id, name: congregation.name, isHeadquarter: congregation.isHeadquarter }
+      });
+
       res.status(201).json(congregation);
     } catch (error) {
-      handleApiError(res, error, 'Erro ao cadastrar congregação.');
+      handleApiError(res, error, MESSAGES.ERRORS.CONGREGATION_CREATE_FAILED);
     }
   }
 
@@ -133,7 +140,7 @@ export class CongregationController {
     try {
       const user = req.user;
       if (!user || !user.roles.includes('SUPER_ADMIN')) {
-        res.status(403).json({ error: 'Apenas o Pastor Presidente / SUPER_ADMIN pode alterar dados de congregações.' });
+        res.status(403).json({ error: MESSAGES.ERRORS.INSUFFICIENT_PERMISSIONS });
         return;
       }
 
@@ -142,7 +149,7 @@ export class CongregationController {
 
       const existing = await prisma.congregation.findUnique({ where: { id: id as string } });
       if (!existing) {
-        res.status(404).json({ error: 'Congregação não encontrada.' });
+        res.status(404).json({ error: MESSAGES.ERRORS.CONGREGATION_NOT_FOUND });
         return;
       }
 
@@ -164,9 +171,14 @@ export class CongregationController {
         }
       });
 
+      logAuditEvent('CONGREGATION_UPDATED', {
+        userId: user.id,
+        details: { id, name: updated.name }
+      });
+
       res.json(updated);
     } catch (error) {
-      handleApiError(res, error, 'Erro ao atualizar congregação.');
+      handleApiError(res, error, MESSAGES.ERRORS.CONGREGATION_UPDATE_FAILED);
     }
   }
 
@@ -175,7 +187,7 @@ export class CongregationController {
     try {
       const user = req.user;
       if (!user || !user.roles.includes('SUPER_ADMIN')) {
-        res.status(403).json({ error: 'Apenas o Pastor Presidente / SUPER_ADMIN pode excluir filiais.' });
+        res.status(403).json({ error: MESSAGES.ERRORS.INSUFFICIENT_PERMISSIONS });
         return;
       }
 
@@ -183,7 +195,7 @@ export class CongregationController {
 
       const existing = await prisma.congregation.findUnique({ where: { id: id as string } });
       if (!existing) {
-        res.status(404).json({ error: 'Congregação não encontrada.' });
+        res.status(404).json({ error: MESSAGES.ERRORS.CONGREGATION_NOT_FOUND });
         return;
       }
 
@@ -193,9 +205,15 @@ export class CongregationController {
       }
 
       await prisma.congregation.delete({ where: { id: id as string } });
+
+      logAuditEvent('CONGREGATION_DELETED', {
+        userId: user.id,
+        details: { id }
+      });
+
       res.json({ message: 'Congregação removida com sucesso.' });
     } catch (error) {
-      handleApiError(res, error, 'Erro ao excluir congregação.');
+      handleApiError(res, error, MESSAGES.ERRORS.CONGREGATION_DELETE_FAILED);
     }
   }
 
@@ -204,7 +222,7 @@ export class CongregationController {
     try {
       const user = req.user;
       if (!user) {
-        res.status(401).json({ error: 'Não autorizado' });
+        res.status(401).json({ error: MESSAGES.ERRORS.UNAUTHORIZED });
         return;
       }
 
@@ -257,7 +275,8 @@ export class CongregationController {
         }
       });
     } catch (error) {
-      handleApiError(res, error, 'Erro ao gerar relatório de dashboard.');
+      handleApiError(res, error, MESSAGES.ERRORS.CONGREGATION_DASHBOARD_FAILED);
     }
   }
 }
+

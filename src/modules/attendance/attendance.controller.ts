@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { MESSAGES } from '../../constants/messages';
 import { handleApiError } from '../../utils/errorHandler';
+import { logAuditEvent } from '../../utils/logger';
 
 export class AttendanceController {
   // 1. Listar todos os lançamentos de frequência dos cultos
@@ -55,6 +56,11 @@ export class AttendanceController {
         }
       });
 
+      logAuditEvent('SERVICE_ATTENDANCE_REGISTERED', {
+        userId: req.user?.id,
+        details: { recordId: record.id, serviceName, attendanceCount: countNumber }
+      });
+
       res.status(201).json(record);
     } catch (error) {
       handleApiError(res, error, MESSAGES.ERRORS.ATTENDANCE_REGISTER_FAILED);
@@ -68,6 +74,12 @@ export class AttendanceController {
       await prisma.serviceAttendance.delete({
         where: { id: String(id) }
       });
+
+      logAuditEvent('SERVICE_ATTENDANCE_DELETED', {
+        userId: req.user?.id,
+        details: { recordId: id }
+      });
+
       res.json({ message: MESSAGES.SUCCESS.ATTENDANCE_DELETED });
     } catch (error) {
       handleApiError(res, error, MESSAGES.ERRORS.ATTENDANCE_DELETE_FAILED);

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { visitorService } from './visitor.service';
 import { MESSAGES } from '../../constants/messages';
 import { handleApiError } from '../../utils/errorHandler';
+import { logAuditEvent } from '../../utils/logger';
 
 export class VisitorController {
   private getIdParam(id: string | string[] | undefined): string | null {
@@ -28,6 +29,13 @@ export class VisitorController {
         registeredById: req.user?.id,
         congregationId
       });
+
+      logAuditEvent('VISITOR_REGISTERED', {
+        userId: req.user?.id,
+        congregationId,
+        details: { visitorId: visitor.id, fullName: visitor.fullName }
+      });
+
       res.status(201).json(visitor);
     } catch (error: any) {
       handleApiError(res, error, MESSAGES.ERRORS.VISITOR_REGISTER_FAILED);

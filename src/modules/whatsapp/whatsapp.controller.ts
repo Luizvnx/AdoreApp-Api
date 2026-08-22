@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { whatsAppService } from './whatsapp.service';
+import { MESSAGES } from '../../constants/messages';
+import { handleApiError } from '../../utils/errorHandler';
+import { logAuditEvent } from '../../utils/logger';
 
 export class WhatsAppController {
   // Retorna o status de conexão da instância no Evolution API
@@ -8,7 +11,7 @@ export class WhatsAppController {
       const status = await whatsAppService.getConnectionStatus();
       res.json(status);
     } catch (error: any) {
-      res.status(500).json({ error: 'Erro ao verificar status do WhatsApp.' });
+      handleApiError(res, error, MESSAGES.ERRORS.WHATSAPP_STATUS_FAILED);
     }
   }
 
@@ -18,7 +21,7 @@ export class WhatsAppController {
       const qrData = await whatsAppService.connectInstance();
       res.json(qrData);
     } catch (error: any) {
-      res.status(500).json({ error: 'Erro ao gerar QR Code do WhatsApp.' });
+      handleApiError(res, error, MESSAGES.ERRORS.WHATSAPP_QRCODE_FAILED);
     }
   }
 
@@ -26,9 +29,10 @@ export class WhatsAppController {
   async disconnect(req: Request, res: Response): Promise<void> {
     try {
       const success = await whatsAppService.disconnectInstance();
+      logAuditEvent('WHATSAPP_DISCONNECTED', { userId: req.user?.id });
       res.json({ success, message: success ? 'WhatsApp desconectado com sucesso.' : 'Falha ao desconectar.' });
     } catch (error: any) {
-      res.status(500).json({ error: 'Erro ao desconectar WhatsApp.' });
+      handleApiError(res, error, MESSAGES.ERRORS.WHATSAPP_DISCONNECT_FAILED);
     }
   }
 
@@ -38,7 +42,7 @@ export class WhatsAppController {
       const content = whatsAppService.getWelcomeTemplate();
       res.json({ content });
     } catch (error: any) {
-      res.status(500).json({ error: 'Erro ao ler modelo de mensagem.' });
+      handleApiError(res, error, MESSAGES.ERRORS.WHATSAPP_READ_TEMPLATE_FAILED);
     }
   }
 
@@ -47,13 +51,14 @@ export class WhatsAppController {
     try {
       const { content } = req.body;
       if (typeof content !== 'string') {
-        res.status(400).json({ error: 'Conteúdo da mensagem inválido.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.WHATSAPP_INVALID_TEMPLATE });
         return;
       }
       whatsAppService.updateWelcomeTemplate(content);
+      logAuditEvent('WHATSAPP_TEMPLATE_UPDATED', { userId: req.user?.id });
       res.json({ message: 'Modelo de mensagem programada salvo com sucesso!' });
     } catch (error: any) {
-      res.status(500).json({ error: 'Erro ao salvar modelo de mensagem.' });
+      handleApiError(res, error, MESSAGES.ERRORS.WHATSAPP_SAVE_TEMPLATE_FAILED);
     }
   }
 
@@ -62,17 +67,19 @@ export class WhatsAppController {
     try {
       const { phone, text } = req.body;
       if (!phone || !text) {
-        res.status(400).json({ error: 'Telefone e mensagem são obrigatórios.' });
+        res.status(400).json({ error: MESSAGES.ERRORS.WHATSAPP_TEST_REQUIRED });
         return;
       }
       const result = await whatsAppService.sendTextMessage(phone, text);
       if (result.success) {
+        logAuditEvent('WHATSAPP_TEST_SENT', { userId: req.user?.id, details: { phone } });
         res.json({ message: 'Mensagem de teste enviada com sucesso!' });
       } else {
-        res.status(400).json({ error: result.error || 'Falha ao enviar mensagem de teste.' });
+        res.status(400).json({ error: result.error || MESSAGES.ERRORS.WHATSAPP_TEST_FAILED });
       }
     } catch (error: any) {
-      res.status(500).json({ error: 'Erro ao enviar mensagem de teste.' });
+      handleApiError(res, error, MESSAGES.ERRORS.WHATSAPP_TEST_FAILED);
     }
   }
 }
+

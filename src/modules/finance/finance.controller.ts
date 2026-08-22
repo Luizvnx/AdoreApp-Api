@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { handleApiError } from '../../utils/errorHandler';
+import { MESSAGES } from '../../constants/messages';
+import { logAuditEvent } from '../../utils/logger';
 
 export class FinanceController {
 
@@ -10,12 +13,12 @@ export class FinanceController {
       const createdById = req.user?.id;
 
       if (!title || !type || amount === undefined || !date || !category) {
-        return res.status(400).json({ error: 'Campos obrigatórios: title, type, amount, date, category.' });
+        return res.status(400).json({ error: MESSAGES.ERRORS.FINANCE_REQUIRED_FIELDS });
       }
 
       const numericAmount = Number(amount);
       if (numericAmount <= 0) {
-        return res.status(400).json({ error: 'O valor da transação deve ser maior que zero.' });
+        return res.status(400).json({ error: MESSAGES.ERRORS.FINANCE_INVALID_AMOUNT });
       }
 
       const validPaymentMethod = paymentMethod || 'PIX';
@@ -69,10 +72,15 @@ export class FinanceController {
         return transaction;
       });
 
+      logAuditEvent('FINANCIAL_TRANSACTION_CREATED', {
+        userId: createdById,
+        congregationId,
+        details: { id: transactionResult.id, title, type, amount: numericAmount, category }
+      });
+
       return res.status(201).json(transactionResult);
     } catch (error: any) {
-      console.error('Erro ao criar transação financeira:', error);
-      return res.status(500).json({ error: 'Erro ao cadastrar transação.', details: error.message });
+      return handleApiError(res, error, MESSAGES.ERRORS.FINANCE_CREATE_FAILED);
     }
   }
 
@@ -183,16 +191,20 @@ export class FinanceController {
         return updatedTransaction;
       });
 
+      logAuditEvent('FINANCIAL_TRANSACTION_UPDATED', {
+        userId: editedById,
+        details: { id, title, amount: numericAmount }
+      });
+
       return res.json(transactionResult);
     } catch (error: any) {
       if (error.message === 'NOT_FOUND') {
-        return res.status(404).json({ error: 'Transação não encontrada.' });
+        return res.status(404).json({ error: MESSAGES.ERRORS.FINANCE_NOT_FOUND });
       }
       if (error.message === 'FORBIDDEN') {
-        return res.status(403).json({ error: 'Você não tem permissão para editar transações de outra filial.' });
+        return res.status(403).json({ error: MESSAGES.ERRORS.FINANCE_EDIT_FORBIDDEN });
       }
-      console.error('Erro ao editar transação:', error);
-      return res.status(500).json({ error: 'Erro ao editar transação.', details: error.message });
+      return handleApiError(res, error, MESSAGES.ERRORS.FINANCE_UPDATE_FAILED);
     }
   }
 
@@ -278,8 +290,7 @@ export class FinanceController {
 
       return res.json(transactions);
     } catch (error: any) {
-      console.error("ERRO LISTAR TRANSACOES:", error);
-      return res.status(500).json({ error: 'Erro ao listar transações.', details: error.message || error });
+      return handleApiError(res, error, 'Erro ao listar transações.');
     }
   }
 
@@ -312,15 +323,20 @@ export class FinanceController {
         await tx.financialTransaction.delete({ where: { id } });
       });
 
-      return res.json({ message: 'Transação excluída com sucesso.' });
+      logAuditEvent('FINANCIAL_TRANSACTION_DELETED', {
+        userId: req.user?.id,
+        details: { id }
+      });
+
+      return res.json({ message: MESSAGES.SUCCESS.TRANSACTION_DELETED });
     } catch (error: any) {
       if (error.message === 'NOT_FOUND') {
-        return res.status(404).json({ error: 'Transação não encontrada.' });
+        return res.status(404).json({ error: MESSAGES.ERRORS.FINANCE_NOT_FOUND });
       }
       if (error.message === 'FORBIDDEN') {
-        return res.status(403).json({ error: 'Você não tem permissão para excluir transações de outra filial.' });
+        return res.status(403).json({ error: MESSAGES.ERRORS.FINANCE_DELETE_FORBIDDEN });
       }
-      return res.status(500).json({ error: 'Erro ao excluir transação.' });
+      return handleApiError(res, error, MESSAGES.ERRORS.FINANCE_DELETE_FAILED);
     }
   }
 

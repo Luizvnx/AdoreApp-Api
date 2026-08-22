@@ -6,6 +6,7 @@ import { JWT_SECRET } from '../../middlewares/authMiddleware';
 import { clearLoginAttempts } from '../../middlewares/rateLimiter';
 import { MESSAGES } from '../../constants/messages';
 import { handleApiError } from '../../utils/errorHandler';
+import { logAuditEvent, logger } from '../../utils/logger';
 
 export class AuthController {
   async login(req: Request, res: Response): Promise<void> {
@@ -42,12 +43,14 @@ export class AuthController {
 
       // 2. Se o usuário não existir no banco
       if (!user) {
+        logger.warn({ email: cleanEmail }, '[Auth] Tentativa de login com e-mail inexistente');
         res.status(401).json({ error: MESSAGES.ERRORS.INVALID_CREDENTIALS });
         return;
       }
 
       // 3. Verificar se o usuário está ativo
       if (!user.isActive) {
+        logger.warn({ userId: user.id, email: cleanEmail }, '[Auth] Tentativa de login em conta desativada');
         res.status(401).json({ error: MESSAGES.ERRORS.ACCOUNT_DISABLED });
         return;
       }
@@ -69,6 +72,7 @@ export class AuthController {
       }
 
       if (!isPasswordValid) {
+        logger.warn({ userId: user.id, email: cleanEmail }, '[Auth] Senha incorreta informada no login');
         res.status(401).json({ error: MESSAGES.ERRORS.INVALID_CREDENTIALS });
         return;
       }
@@ -77,6 +81,14 @@ export class AuthController {
       clearLoginAttempts(req);
 
       const primaryRole = user.roles[0] || 'MEMBER';
+
+      // Log de auditoria de login bem-sucedido
+      logAuditEvent('USER_LOGIN_SUCCESS', {
+        userId: user.id,
+        email: user.email,
+        congregationId: user.congregationId || undefined,
+        details: { role: primaryRole }
+      });
 
       // 5. Gerar token JWT assinado digitalmente com congregationId
       const tokenPayload = {
@@ -104,7 +116,7 @@ export class AuthController {
 
       // 7. Retornar resposta ao cliente
       res.json({
-        message: 'Login realizado com sucesso.',
+        message: MESSAGES.SUCCESS.LOGIN,
         token,
         user: {
           id: user.id,
@@ -204,7 +216,12 @@ export class AuthController {
       secure: isHttps,
       sameSite: isHttps ? 'none' : 'lax'
     });
-    res.json({ message: 'Sessão encerrada com sucesso.' });
+
+    if (req.user?.id) {
+      logAuditEvent('USER_LOGOUT', { userId: req.user.id, email: req.user.email });
+    }
+
+    res.json({ message: MESSAGES.SUCCESS.LOGOUT });
   }
 
   // Garante que exista o usuário admin inicial cadastrado com senha criptografada em Bcrypt

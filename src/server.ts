@@ -6,6 +6,8 @@ import { routes } from './routes';
 import { prisma } from './lib/prisma';
 import { sqlSanitizer } from './middlewares/sqlSanitizer';
 import { globalApiRateLimiter } from './middlewares/rateLimiter';
+import { requestLogger } from './middlewares/requestLogger';
+import { logger } from './utils/logger';
 import { AuthController } from './modules/auth/auth.controller';
 import { MESSAGES } from './constants/messages';
 import { handleApiError } from './utils/errorHandler';
@@ -45,7 +47,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    console.warn(`[CORS Warning] Origem não autorizada bloqueada: "${origin}"`);
+    logger.warn(`[CORS Warning] Origem não autorizada bloqueada: "${origin}"`);
     return callback(null, false);
   },
   credentials: true,
@@ -58,6 +60,9 @@ app.use(cookieParser());
 
 // Parser de JSON
 app.use(express.json());
+
+// Logger de requisições HTTP de alta performance (não-bloqueante)
+app.use(requestLogger);
 
 // Proteção global contra SQL Injection e manipulação de parâmetros
 app.use(sqlSanitizer);
@@ -82,23 +87,22 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 import { ensureHeadquarterCongregation } from './lib/seedCongregation';
 
 const server = app.listen(PORT, async () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`🔗 Healthcheck disponível em: http://localhost:${PORT}/health`);
-  console.log(`🔗 API Autenticação em: http://localhost:${PORT}/api/auth/login`);
-  console.log(`🔗 API Visitantes disponível em: http://localhost:${PORT}/api/visitors`);
+  logger.info(`🚀 Servidor rodando na porta ${PORT}`);
+  logger.info(`🔗 Healthcheck disponível em: http://localhost:${PORT}/health`);
   
   await AuthController.seedInitialUserIfNeeded();
   await ensureHeadquarterCongregation();
 });
 
 const gracefulShutdown = async () => {
-  console.log('\n⏳ Encerrando servidor e conexões do Prisma...');
+  logger.info('⏳ Encerrando servidor e conexões do Prisma...');
   server.close(async () => {
     await prisma.$disconnect();
-    console.log('✅ Servidor finalizado com sucesso.');
+    logger.info('✅ Servidor finalizado com sucesso.');
     process.exit(0);
   });
 };
 
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
+
