@@ -18,14 +18,40 @@ export class WhatsAppService {
     return path.join(__dirname, '../../templates/welcome_message.txt');
   }
 
-  // Formata o número de telefone para o padrão internacional do WhatsApp (ex: 5579999999999)
+  // Formata e sanitiza qualquer número de telefone (corrige 9º dígito, DDI 55, traços e espaços)
   public formatPhoneNumber(phone: string): string {
     if (!phone) return '';
+
+    // 1. Remove qualquer caractere que não seja número
     let digits = phone.replace(/\D/g, '');
     if (!digits) return '';
-    if (digits.length === 10 || digits.length === 11) {
+
+    // 2. Se o número começar com 55 e tiver 12 dígitos (55 + DDD de 2 dígitos + 8 dígitos móveis)
+    // Ex: 557998457535 (12 dígitos) -> Insere o 9º dígito: 5579998457535
+    if (digits.startsWith('55') && digits.length === 12) {
+      const ddd = digits.slice(2, 4);
+      const rest = digits.slice(4);
+      if (['6', '7', '8', '9'].includes(rest[0])) {
+        digits = `55${ddd}9${rest}`;
+      }
+    } 
+    // 3. Se não tiver DDI 55 e tiver 10 dígitos (DDD + 8 dígitos)
+    // Ex: 7998457535 (10 dígitos) -> Insere 9º dígito e DDI 55: 5579998457535
+    else if (digits.length === 10) {
+      const ddd = digits.slice(0, 2);
+      const rest = digits.slice(2);
+      if (['6', '7', '8', '9'].includes(rest[0])) {
+        digits = `55${ddd}9${rest}`;
+      } else {
+        digits = `55${digits}`;
+      }
+    } 
+    // 4. Se tiver 11 dígitos (DDD + 9 dígitos)
+    // Ex: 79998457535 -> Adiciona DDI 55: 5579998457535
+    else if (digits.length === 11) {
       digits = `55${digits}`;
     }
+
     return digits;
   }
 
@@ -217,11 +243,24 @@ export class WhatsAppService {
         return { success: true, data };
       } else {
         const errData: any = await response.json().catch(() => ({}));
-        return { success: false, error: errData?.message || `HTTP ${response.status}` };
+        let userMessage = errData?.message || errData?.response?.message || errData?.error;
+
+        if (response.status === 404) {
+          userMessage = `O número ${formattedPhone} não possui conta ativa no WhatsApp ou a sessão foi desconectada.`;
+        } else if (response.status === 400) {
+          userMessage = `O número de telefone ${formattedPhone} é inválido ou incompatível.`;
+        } else if (response.status === 401 || response.status === 403) {
+          userMessage = 'Erro de permissão com a Evolution API (API Key inválida).';
+        }
+
+        return { 
+          success: false, 
+          error: typeof userMessage === 'string' ? userMessage : `Não foi possível enviar a mensagem (HTTP ${response.status}).`
+        };
       }
     } catch (error: any) {
       console.warn(`[WhatsApp API Warning] Falha ao enviar para ${formattedPhone}:`, error?.message);
-      return { success: false, error: error?.message || 'Erro ao enviar mensagem via Evolution API' };
+      return { success: false, error: 'O servidor da Evolution API não respondeu a tempo ou está desconectado.' };
     }
   }
 
