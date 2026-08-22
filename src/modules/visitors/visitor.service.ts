@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { MaritalStatus, Prisma } from '@prisma/client';
+import { whatsAppService } from '../whatsapp/whatsapp.service';
 
 export interface CreateVisitorDTO {
   fullName: string;
@@ -61,7 +62,7 @@ export class VisitorService {
       await this.checkEmailAvailability(cleanEmail);
     }
 
-    return prisma.visitor.create({
+    const visitor = await prisma.visitor.create({
       data: {
         ...rest,
         email: cleanEmail,
@@ -72,7 +73,14 @@ export class VisitorService {
       },
       include: {
         registeredBy: {
-          select: { id: true, fullName: true, email: true },
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            memberProfile: {
+              select: { phone: true }
+            }
+          },
         },
         connectionGroup: {
           select: { id: true, name: true },
@@ -82,6 +90,15 @@ export class VisitorService {
         }
       },
     });
+
+    // Dispara a mensagem de boas-vindas do WhatsApp em segundo plano via Evolution API (se o visitante tiver telefone)
+    if (visitor.phone) {
+      whatsAppService.sendWelcomeMessageToVisitor(visitor).catch((err) => {
+        console.warn('[WhatsApp Automático] Não foi possível enviar a mensagem de boas-vindas:', err);
+      });
+    }
+
+    return visitor;
   }
 
   async findAll(params?: { search?: string; neighborhood?: string; wantsToJoinGC?: boolean; connectionGroupId?: string; congregationId?: string }) {

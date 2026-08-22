@@ -9,6 +9,7 @@ import { financeRoutes } from './modules/finance/finance.routes';
 import { authMiddleware } from './middlewares/authMiddleware';
 
 import { congregationRoutes } from './modules/congregations/congregation.routes';
+import { whatsAppRoutes } from './modules/whatsapp/whatsapp.routes';
 
 const routes = Router();
 
@@ -30,5 +31,6 @@ routes.use('/connection-groups', authMiddleware, connectionGroupRoutes);
 routes.use('/attendance', authMiddleware, attendanceRoutes);
 routes.use('/finance', authMiddleware, financeRoutes);
 routes.use('/congregations', authMiddleware, congregationRoutes);
+routes.use('/whatsapp', authMiddleware, whatsAppRoutes);
 
 export { routes };
