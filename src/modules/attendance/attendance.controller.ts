@@ -24,7 +24,7 @@ export class AttendanceController {
   // 2. Lançar nova contagem de presença em um culto
   async createAttendance(req: Request, res: Response): Promise<void> {
     try {
-      const { date, serviceName, attendanceCount, notes } = req.body;
+      const { date, serviceName, attendanceCount, preacher, notes } = req.body;
 
       if (!serviceName || typeof serviceName !== 'string' || !serviceName.trim()) {
         res.status(400).json({ error: MESSAGES.ERRORS.ATTENDANCE_NAME_REQUIRED });
@@ -44,6 +44,7 @@ export class AttendanceController {
           date: serviceDate,
           serviceName: serviceName.trim(),
           attendanceCount: Math.floor(countNumber),
+          preacher: preacher && typeof preacher === 'string' ? preacher.trim() : null,
           notes: notes && typeof notes === 'string' ? notes.trim() : null,
           createdById: req.user?.id || null
         },

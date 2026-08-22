@@ -186,6 +186,7 @@ model ServiceAttendance {
   date            DateTime
   serviceName     String
   attendanceCount Int
+  preacher        String?
   notes           String?
 
   createdById     String?
