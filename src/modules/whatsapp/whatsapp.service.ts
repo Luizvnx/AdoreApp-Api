@@ -93,7 +93,6 @@ export class WhatsAppService {
     connected: boolean;
     state: string;
     instanceName: string;
-    apiUrl: string;
     qrCodeBase64?: string | null;
     pairCode?: string | null;
     message?: string;
@@ -114,7 +113,6 @@ export class WhatsAppService {
             connected: true,
             state: 'open',
             instanceName: this.instanceName,
-            apiUrl: this.apiUrl,
           };
         }
       }
@@ -125,7 +123,6 @@ export class WhatsAppService {
         connected: false,
         state: 'close',
         instanceName: this.instanceName,
-        apiUrl: this.apiUrl,
         qrCodeBase64: qrRes.qrCodeBase64,
         pairCode: qrRes.pairCode,
       };
@@ -134,8 +131,7 @@ export class WhatsAppService {
         connected: false,
         state: 'offline',
         instanceName: this.instanceName,
-        apiUrl: this.apiUrl,
-        message: `Servidor Evolution API não encontrado em ${this.apiUrl} (${error?.message || 'Conexão recusada'}).`,
+        message: 'Servidor do WhatsApp offline ou inacessível no momento.',
       };
     }
   }
